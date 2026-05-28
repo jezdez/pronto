@@ -36,10 +36,15 @@ on:
         required: false
         type: number
         default: 7
-      embed-payload:
+      embed-bundle:
         description: >
           Embed package archives into the binary for offline bootstrap
           (increases size by 40-85 MB depending on platform). The output binary is named cxz instead of cx.
+        required: false
+        type: string
+        default: "false"
+      embed-payload:
+        description: "Deprecated alias for embed-bundle."
         required: false
         type: string
         default: "false"
@@ -72,7 +77,7 @@ jobs:
           channels: ${{ inputs.channels }}
           exclude: ${{ inputs.exclude }}
           ref: ${{ inputs.ref }}
-          embed-payload: ${{ inputs.embed-payload }}
+          embed-bundle: ${{ (inputs.embed-bundle == 'true' || inputs.embed-payload == 'true') && 'true' || 'false' }}
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

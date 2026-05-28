@@ -9,7 +9,7 @@ use miette::IntoDiagnostic;
 pub const EMBEDDED_LOCK: &str = include_str!(concat!(env!("OUT_DIR"), "/cx.lock"));
 
 /// Zstd-compressed tar of package archives, embedded when built with
-/// `CX_EMBED_PAYLOAD=1`. Empty (0 bytes) for standard `cx` builds.
+/// `PRONTO_EMBED_BUNDLE=1`. Empty (0 bytes) for standard `cx` builds.
 pub const EMBEDDED_PAYLOAD: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/payload.tar.zst"));
 
 pub(crate) const INSTALL_METHOD: Option<&str> = option_env!("CX_INSTALL_METHOD");
