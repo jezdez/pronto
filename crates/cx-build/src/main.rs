@@ -59,7 +59,7 @@ enum Command {
         #[arg(long)]
         packages: Option<String>,
 
-        /// Comma-separated conda channels (replaces [workspace].channels)
+        /// Comma-separated conda channels (replaces `[workspace].channels`)
         #[arg(long)]
         channels: Option<String>,
 

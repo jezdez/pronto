@@ -96,7 +96,7 @@ pub fn read_metadata(prefix: &Path) -> miette::Result<PrefixMetadata> {
 /// Write a CEP 22 frozen marker to protect the base prefix from accidental
 /// modification. Users should create named environments for their work and
 /// use `conda self update` (via conda-self) to update the base installation.
-/// See: https://conda.org/learn/ceps/cep-0022/
+/// See: <https://conda.org/learn/ceps/cep-0022/>
 pub fn write_frozen(prefix: &Path) -> miette::Result<()> {
     let frozen_path = prefix.join("conda-meta").join("frozen");
     let contents = serde_json::json!({
