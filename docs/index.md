@@ -54,4 +54,5 @@ explanation/runtime-template
 :maxdepth: 1
 
 roadmap
+changelog
 ```

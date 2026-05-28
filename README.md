@@ -29,6 +29,9 @@ for embedded builds.
 Generic runtime behavior stays here; opinionated package sets and distribution
 defaults belong in downstream distributions.
 
+Historical generic-builder release notes from `conda-express` now live in
+[CHANGELOG.md](CHANGELOG.md).
+
 `pronto` is not an OS installer generator and does not target `.sh`, `.pkg`, or
 `.msi` output. It produces bootstrap binaries that can be distributed directly
 or wrapped by Homebrew, constructor, Docker, enterprise packaging systems, and
