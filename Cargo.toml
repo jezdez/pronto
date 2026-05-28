@@ -1,18 +1,24 @@
 [workspace]
-members = [".", "crates/pronto"]
-default-members = [".", "crates/pronto"]
+members = ["."]
+default-members = ["."]
 
 [package]
-name = "pronto-runtime"
+name = "pronto"
 version = "0.6.0"
 edition = "2024"
-description = "Runtime for pronto-built conda bootstrap binaries"
+description = "Build ready-to-run conda bootstrap binaries"
 license = "BSD-3-Clause"
 readme = "README.md"
+publish = false
+default-run = "pronto"
 
 [[bin]]
 name = "cx"
 path = "src/main.rs"
+
+[[bin]]
+name = "pronto"
+path = "src/bin/pronto.rs"
 
 [features]
 default = ["rustls-tls"]
@@ -53,8 +59,10 @@ reqwest = { version = "0.12", default-features = false, features = ["stream"] }
 reqwest-middleware = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.11"
 tokio = { version = "1.52", features = ["rt-multi-thread", "macros"] }
 toml = "1.1"
+toml_edit = "0.25"
 tar = "0.4"
 tempfile = "3"
 tracing = "0.1"

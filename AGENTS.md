@@ -5,9 +5,9 @@
 - `pronto` is the generic build system split out of `conda-express`
   for producing ready-to-run conda bootstrap binaries.
 
-- The Cargo workspace has two members: the root crate
-  (currently carrying the inherited `cx` bootstrap runtime while the
-  migration continues) and `crates/pronto-build` (builder helper).
+- The Cargo workspace has one package, `pronto`, with two binaries:
+  `pronto` for the builder CLI and `cx` for the bootstrap runtime that
+  Pronto stages into distribution artifacts.
 
 - Do not add browser, WebAssembly, Emscripten, or JupyterLite behavior
   here. That work belongs in the separate `conda-wasm` repository.

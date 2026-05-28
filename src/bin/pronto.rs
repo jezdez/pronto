@@ -686,7 +686,12 @@ fn inspect_artifact(platform_str: Option<String>, json: bool, root_override: Opt
 
 fn run_cargo_build(root: &Path, embed_bundle: bool, target: Option<&str>) {
     let mut command = std::process::Command::new("cargo");
-    command.arg("build").arg("--release").current_dir(root);
+    command
+        .arg("build")
+        .arg("--release")
+        .arg("--bin")
+        .arg("cx")
+        .current_dir(root);
     if let Some(target) = target {
         command.arg("--target").arg(target);
     }
