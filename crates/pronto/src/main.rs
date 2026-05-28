@@ -24,7 +24,7 @@ struct CxConfig {
 }
 
 #[derive(Parser)]
-#[command(name = "pronto-build", about = "Build helper for Pronto artifacts")]
+#[command(name = "pronto", about = "Build ready-to-run conda bootstrap binaries")]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -33,7 +33,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// Extract artifact.lock from pixi.lock's cx-env environment and apply exclude filters
-    Prepare {
+    Lock {
         /// Only verify artifact.lock is up-to-date; exit 1 if stale
         #[arg(long)]
         check: bool,
@@ -86,7 +86,7 @@ fn project_root(override_root: Option<&Path>) -> PathBuf {
         .to_path_buf()
 }
 
-fn prepare(check: bool, root_override: Option<PathBuf>) {
+fn write_artifact_lock(check: bool, root_override: Option<PathBuf>) {
     let root = project_root(root_override.as_deref());
     let pixi_lock_path = root.join("pixi.lock");
     let artifact_lock_path = root.join("artifact.lock");
@@ -111,22 +111,16 @@ fn prepare(check: bool, root_override: Option<PathBuf>) {
 
     if check {
         if !artifact_lock_path.exists() {
-            eprintln!(
-                "artifact.lock does not exist; run `cargo run -p pronto-build -- prepare` to create it"
-            );
+            eprintln!("artifact.lock does not exist; run `pronto lock` to create it");
             std::process::exit(1);
         }
         if !artifact_hash_path.exists() {
-            eprintln!(
-                "artifact.lock.hash does not exist; run `cargo run -p pronto-build -- prepare` to create it"
-            );
+            eprintln!("artifact.lock.hash does not exist; run `pronto lock` to create it");
             std::process::exit(1);
         }
         let stored_hash = std::fs::read_to_string(&artifact_hash_path).unwrap_or_default();
         if stored_hash.trim() != input_hash {
-            eprintln!(
-                "artifact.lock is stale (hash mismatch); run `cargo run -p pronto-build -- prepare` to update"
-            );
+            eprintln!("artifact.lock is stale (hash mismatch); run `pronto lock` to update");
             std::process::exit(1);
         }
         eprintln!("artifact.lock is up-to-date");
@@ -202,7 +196,7 @@ fn parse_pixi_lock(pixi_lock_content: &str, pixi_lock_path: &Path) -> LockFile {
     let normalized_lock;
     let lock_content = if pixi_lock_content.starts_with("version: 7\n") {
         // Pixi lock v7 is backwards-compatible with rattler_lock's v6 parser for
-        // the conda package data pronto-build consumes.
+        // the conda package data `pronto lock` consumes.
         normalized_lock = pixi_lock_content.replacen("version: 7\n", "version: 6\n", 1);
         normalized_lock.as_str()
     } else {
@@ -518,7 +512,7 @@ fn configure(
 fn main() {
     let cli = Cli::parse();
     match cli.command {
-        Command::Prepare { check, root } => prepare(check, root),
+        Command::Lock { check, root } => write_artifact_lock(check, root),
         Command::Bundle { platform, root } => gen_bundle(platform, root),
         Command::Configure {
             packages,

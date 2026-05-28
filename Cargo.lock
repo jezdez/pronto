@@ -2384,7 +2384,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "pronto-build"
+name = "pronto"
 version = "0.1.0"
 dependencies = [
  "clap",

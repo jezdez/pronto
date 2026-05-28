@@ -1,5 +1,5 @@
 //! Integration tests verifying the embedded artifact lock has been pre-filtered
-//! by `pronto-build prepare` (exclude filter applied at build time).
+//! by `pronto lock` (exclude filter applied at build time).
 
 use std::str::FromStr;
 
@@ -38,7 +38,7 @@ fn test_embedded_lockfile_package_composition() {
     for pkg in &excluded {
         assert!(
             !names.contains(&pkg.to_string()),
-            "embedded artifact lock should not contain {pkg} (pre-filtered by pronto-build prepare)"
+            "embedded artifact lock should not contain {pkg} (pre-filtered by pronto lock)"
         );
     }
 

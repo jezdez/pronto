@@ -14,9 +14,9 @@ sccache = ">=0.10"
 RUSTC_WRAPPER = "sccache"
 
 [tasks]
-prepare = "cargo run -p pronto-build -- prepare"
-check-lock = "cargo run -p pronto-build -- prepare --check"
-bundle = "cargo run -p pronto-build -- bundle"
+prepare = "cargo run -p pronto -- lock"
+check-lock = "cargo run -p pronto -- lock --check"
+bundle = "cargo run -p pronto -- bundle"
 build = "cargo build --release"
 build-debug = "cargo build"
 test = "cargo test --release"

@@ -1,8 +1,8 @@
 [package]
-name = "pronto-build"
+name = "pronto"
 version = "0.1.0"
 edition = "2024"
-description = "Pronto build helper for conda bootstrap artifacts"
+description = "Build ready-to-run conda bootstrap binaries"
 publish = false
 
 [dependencies]

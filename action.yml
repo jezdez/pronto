@@ -54,12 +54,12 @@ runs:
       with:
         repository: jezdez/pronto
         ref: ${{ inputs.ref }}
-        path: .pronto-build
+        path: .pronto
 
     - name: Setup pixi
       uses: prefix-dev/setup-pixi@1b2de7f3351f171c8b4dfeb558c639cb58ed4ec0 # v0.9.5
       with:
-        manifest-path: .pronto-build/pixi.toml
+        manifest-path: .pronto/pixi.toml
         cache: true
 
     - uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
@@ -67,7 +67,7 @@ runs:
     - name: Configure custom packages
       if: inputs.packages != '' || inputs.channels != '' || inputs.exclude != ''
       shell: bash
-      working-directory: .pronto-build
+      working-directory: .pronto
       run: |
         ARGS=""
         if [ -n "${{ inputs.packages }}" ]; then
@@ -79,21 +79,21 @@ runs:
         if [ -n "${{ inputs.exclude }}" ]; then
           ARGS="$ARGS --exclude '${{ inputs.exclude }}'"
         fi
-        eval pixi run -- cargo run -p pronto-build -- configure $ARGS
+        eval pixi run -- cargo run -p pronto -- configure $ARGS
         pixi lock
         pixi run prepare
 
     - name: Generate bundle
       if: inputs.embed-bundle == 'true'
       shell: bash
-      working-directory: .pronto-build
+      working-directory: .pronto
       run: pixi run bundle
 
     - name: Build cx
       shell: bash
       env:
         PRONTO_EMBED_BUNDLE: ${{ inputs.embed-bundle == 'true' && '1' || '' }}
-      working-directory: .pronto-build
+      working-directory: .pronto
       run: pixi run build
 
     - name: Stage binary
@@ -116,7 +116,7 @@ runs:
           ASSET_NAME="${PREFIX}-${TARGET}"
         fi
         BINARY_PATH="${GITHUB_WORKSPACE}/${ASSET_NAME}"
-        cp ".pronto-build/target/release/${BIN_NAME}" "${BINARY_PATH}"
+        cp ".pronto/target/release/${BIN_NAME}" "${BINARY_PATH}"
         sha256sum "${BINARY_PATH}" > "${BINARY_PATH}.sha256"
         echo "binary_path=${BINARY_PATH}" >> "$GITHUB_OUTPUT"
         echo "asset_name=${ASSET_NAME}" >> "$GITHUB_OUTPUT"

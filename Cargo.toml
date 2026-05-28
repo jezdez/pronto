@@ -1,6 +1,6 @@
 [workspace]
-members = [".", "crates/pronto-build"]
-default-members = [".", "crates/pronto-build"]
+members = [".", "crates/pronto"]
+default-members = [".", "crates/pronto"]
 
 [package]
 name = "conda-express"
