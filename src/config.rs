@@ -7,14 +7,15 @@ use miette::IntoDiagnostic;
 
 use crate::policy;
 
-/// The rattler-lock v6 artifact lock embedded at compile time by `build.rs`.
-pub const EMBEDDED_LOCK: &str = include_str!(concat!(env!("OUT_DIR"), "/artifact.lock"));
+/// The rattler-lock runtime lock embedded at compile time by `build.rs`.
+pub const EMBEDDED_LOCK: &str = include_str!(concat!(env!("OUT_DIR"), "/runtime.lock"));
 
 /// Zstd-compressed tar of package archives, embedded when built with
-/// `PRONTO_EMBED_BUNDLE=1`. Empty (0 bytes) for standard `cx` builds.
+/// `PRONTO_EMBED_BUNDLE=1`. Empty (0 bytes) for builds without an embedded
+/// bundle.
 pub const EMBEDDED_BUNDLE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/bundle.tar.zst"));
 
-pub(crate) const INSTALL_METHOD: Option<&str> = option_env!("CX_INSTALL_METHOD");
+pub(crate) const INSTALL_METHOD: Option<&str> = option_env!("PRONTO_INSTALL_METHOD");
 
 /// The `pixi.toml` embedded at compile time (contains `[tool.pronto]`).
 const EMBEDDED_PIXI_TOML: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/pixi.toml"));

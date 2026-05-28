@@ -13,8 +13,9 @@ publish = false
 default-run = "pronto"
 
 [[bin]]
-name = "cx"
+name = "pronto-runtime"
 path = "src/main.rs"
+required-features = ["runtime-template"]
 
 [[bin]]
 name = "pronto"
@@ -38,6 +39,7 @@ rustls-tls = [
   "rattler_cache/rustls-tls",
 ]
 online_tests = []
+runtime-template = []
 slow_tests = []
 
 [dependencies]

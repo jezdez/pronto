@@ -1,4 +1,4 @@
-//! cx — lightweight single-binary conda bootstrapper powered by rattler.
+//! Generic single-binary conda bootstrap runtime powered by rattler.
 
 use std::env;
 
@@ -120,7 +120,7 @@ async fn async_main() -> miette::Result<()> {
                     return exec::replace_process_with_conda(&prefix, &conda_args);
                 }
                 Some(Command::Help) => {
-                    Cli::parse_from(["cx", "--help"]);
+                    Cli::parse_from([policy::COMMAND_NAME, "--help"]);
                 }
                 None => {
                     let prefix = policy::default_prefix()?;

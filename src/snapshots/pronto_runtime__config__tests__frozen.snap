@@ -1,0 +1,7 @@
+---
+source: src/config.rs
+expression: contents
+---
+{
+  "message": "This base environment is managed by pronto-runtime.\nCreate a new environment instead: conda create -n myenv\nTo re-bootstrap: pronto-runtime bootstrap --force\nTo override: pass --override-frozen-env"
+}

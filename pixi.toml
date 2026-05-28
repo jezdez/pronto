@@ -17,14 +17,14 @@ RUSTC_WRAPPER = "sccache"
 prepare = "cargo run -p pronto -- lock"
 check-lock = "cargo run -p pronto -- lock --check"
 bundle = "cargo run -p pronto -- bundle"
-build = "cargo build --release"
-build-debug = "cargo build"
-test = "cargo test --release"
-test-all = "cargo test --release --features online_tests,slow_tests"
-coverage = "cargo llvm-cov --lcov --output-path lcov.info"
-coverage-html = "cargo llvm-cov --html"
+build = "cargo build --release --bin pronto"
+build-debug = "cargo build --bin pronto"
+test = { cmd = "cargo test --release --features runtime-template", depends-on = ["prepare"] }
+test-all = { cmd = "cargo test --release --features runtime-template,online_tests,slow_tests", depends-on = ["prepare"] }
+coverage = { cmd = "cargo llvm-cov --features runtime-template --lcov --output-path lcov.info", depends-on = ["prepare"] }
+coverage-html = { cmd = "cargo llvm-cov --features runtime-template --html", depends-on = ["prepare"] }
 fmt-check = "cargo fmt --check"
-clippy = "cargo clippy --all-targets -- -D warnings"
+clippy = { cmd = "cargo clippy --all-targets --features runtime-template -- -D warnings", depends-on = ["prepare"] }
 lint = { depends-on = ["fmt-check", "clippy"] }
 demos = { cmd = """bash -c 'if [ -n "$1" ]; then vhs "demos/$1.tape"; else for tape in demos/*.tape; do [[ "$(basename "$tape")" == _* ]] && continue; vhs "$tape"; done; fi' -- {{ name }}""", args = [{ arg = "name", default = "" }], description = "Record demo GIFs" }
 

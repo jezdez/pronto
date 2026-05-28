@@ -8,6 +8,9 @@ branding:
   color: green
 
 inputs:
+  name:
+    description: "Distribution binary name to build."
+    required: true
   packages:
     description: >
       Comma-separated conda package specs to include in the bootstrapper.
@@ -44,16 +47,16 @@ inputs:
 
 outputs:
   binary-path:
-    description: "Absolute path to the built cx binary."
+    description: "Absolute path to the built distribution binary."
     value: ${{ steps.stage.outputs.binary_path }}
   asset-name:
-    description: "Platform-qualified asset name (e.g. cx-aarch64-apple-darwin)."
+    description: "Platform-qualified asset name."
     value: ${{ steps.stage.outputs.asset_name }}
   info-path:
     description: "Absolute path to the artifact info JSON."
     value: ${{ steps.stage.outputs.info_path }}
   lock-path:
-    description: "Absolute path to the staged artifact lock."
+    description: "Absolute path to the staged runtime lock."
     value: ${{ steps.stage.outputs.lock_path }}
   package-list-path:
     description: "Absolute path to the package list."
@@ -99,7 +102,7 @@ runs:
         pixi lock
         pixi run prepare
 
-    - name: Build cx
+    - name: Build runtime
       shell: bash
       working-directory: .pronto
       env:
@@ -114,7 +117,7 @@ runs:
         fi
         pixi run -- cargo run -p pronto -- build \
           --layout "$LAYOUT" \
-          --name cx \
+          --name "${{ inputs.name }}" \
           --target-label "$TARGET" \
           --out-dir "${GITHUB_WORKSPACE}/.pronto-artifacts"
 
@@ -126,9 +129,9 @@ runs:
       run: |
         TARGET="$(rustc -vV | grep '^host:' | cut -d' ' -f2)"
         if [[ "$EMBED_BUNDLE" == "true" ]]; then
-          PREFIX="cxz"
+          PREFIX="${{ inputs.name }}z"
         else
-          PREFIX="cx"
+          PREFIX="${{ inputs.name }}"
         fi
         STEM="${PREFIX}-${TARGET}"
         if [[ "$TARGET" == *"windows"* ]]; then
@@ -141,6 +144,6 @@ runs:
         echo "binary_path=${BINARY_PATH}" >> "$GITHUB_OUTPUT"
         echo "asset_name=${ASSET_NAME}" >> "$GITHUB_OUTPUT"
         echo "info_path=${ARTIFACT_DIR}/${STEM}.info.json" >> "$GITHUB_OUTPUT"
-        echo "lock_path=${ARTIFACT_DIR}/${STEM}.artifact.lock" >> "$GITHUB_OUTPUT"
+        echo "lock_path=${ARTIFACT_DIR}/${STEM}.runtime.lock" >> "$GITHUB_OUTPUT"
         echo "package_list_path=${ARTIFACT_DIR}/${STEM}.packages.txt" >> "$GITHUB_OUTPUT"
         echo "checksums_path=${ARTIFACT_DIR}/${STEM}.sha256" >> "$GITHUB_OUTPUT"

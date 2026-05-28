@@ -38,7 +38,7 @@ pub fn replace_process_with_conda(prefix: &Path, args: &[&str]) -> miette::Resul
 }
 
 /// Run conda as a subprocess, filtering activation hints from stdout and
-/// replacing them with cx-appropriate guidance. Used for commands like
+/// replacing them with runtime-appropriate guidance. Used for commands like
 /// `create` and `env create` that print "conda activate" instructions.
 pub fn run_conda_filtered(prefix: &Path, args: &[&str]) -> miette::Result<()> {
     let mut child = build_command(prefix, args)?

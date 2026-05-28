@@ -1,0 +1,48 @@
+---
+source: tests/cli_integration.rs
+expression: stdout
+---
+This runtime is a single-binary bootstrapper for conda.
+
+It installs a conda environment from an embedded lockfile, uses conda-rattler-solver for solves, and conda-spawn for activation.
+
+Usage: pronto-runtime [OPTIONS] [COMMAND]
+
+Commands:
+  bootstrap  Bootstrap a fresh conda installation into the prefix
+  status     Print runtime status (prefix, channels, packages)
+  shell      Activate an environment via subshell (alias for conda spawn)
+  uninstall  Uninstall this runtime: remove the conda prefix and environments
+  help       Show this help message
+
+Options:
+  -v, --verbose
+          Increase output detail
+
+  -q, --quiet
+          Suppress non-essential output
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+  -V, --version
+          Print version
+
+Quick start:
+
+  pronto-runtime bootstrap                           Install conda into ~/.pronto-runtime
+  pronto-runtime create -n myenv python=3.12 numpy   Create an environment
+  pronto-runtime shell myenv                         Activate (spawns a subshell)
+  exit                                   Leave the environment
+
+Management:
+
+  pronto-runtime status                              Show installation details
+  pronto-runtime uninstall                           Remove conda prefix and all environments
+
+Pass-through:
+
+  Any command not listed above is passed through to conda:
+  pronto-runtime install, pronto-runtime remove, pronto-runtime list, pronto-runtime env, pronto-runtime info, pronto-runtime config, ...
+
+Docs: https://jezdez.github.io/pronto/

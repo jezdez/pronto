@@ -1,12 +1,12 @@
-//! Regression guard for the `cx create` / `cx env create` stdout-piping bug.
+//! Regression guard for the `create` / `env create` stdout-piping bug.
 //!
 //! Conda asks for confirmation by writing a prompt to **stdout without a newline**, then
 //! calling `stdin.readline()` (see `conda/plugins/reporter_backends/console.py`). The old
-//! `cx` path piped conda stdout and consumed it with `BufRead::lines()`, which blocks until
+//! runtime path piped conda stdout and consumed it with `BufRead::lines()`, which blocks until
 //! a newline. The child blocks on stdin at the same time, so the prompt never reaches the
 //! user and input appears swallowed.
 //!
-//! This test does not run the real `cx` binary; it reproduces that **conda-shaped** stdout/stdin
+//! This test does not run the real runtime binary; it reproduces that **conda-shaped** stdout/stdin
 //! pattern with a shell child. If someone reverts to always piping `create` on a TTY, this
 //! documents why that regresses.
 

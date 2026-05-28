@@ -301,7 +301,7 @@ pub(crate) fn uninstall(prefix: &Path, yes: bool, verbosity: Verbosity) -> miett
         vec![]
     };
 
-    let cx_binary = env::current_exe().ok();
+    let runtime_binary = env::current_exe().ok();
 
     eprintln!(
         "{} This will permanently remove:",
@@ -395,7 +395,7 @@ pub(crate) fn uninstall(prefix: &Path, yes: bool, verbosity: Verbosity) -> miett
         .into_diagnostic()
         .context("failed to remove conda prefix")?;
 
-    if let Some(ref bin) = cx_binary {
+    if let Some(ref bin) = runtime_binary {
         let hint = match crate::config::INSTALL_METHOD {
             Some("homebrew") => format!("   brew uninstall {}", policy::DISPLAY_NAME),
             Some("cargo") => format!("   cargo uninstall {}", policy::DISPLAY_NAME),
@@ -562,7 +562,7 @@ mod tests {
     }
 
     #[test]
-    fn test_default_prefix_ends_with_cx() {
+    fn test_default_prefix_uses_policy_default() {
         let prefix = policy::default_prefix().unwrap();
         assert_eq!(
             prefix.file_name().unwrap().to_str().unwrap(),
@@ -618,7 +618,7 @@ mod tests {
     #[test]
     fn test_clean_path_entries_removes_condabin() {
         let tmp = TempDir::new().unwrap();
-        let condabin_line = "export PATH=\"/home/user/.cx/condabin:$PATH\"";
+        let condabin_line = "export PATH=\"/home/user/.demo/condabin:$PATH\"";
         let bashrc = tmp.path().join(".bashrc");
         std::fs::write(
             &bashrc,

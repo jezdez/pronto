@@ -2,18 +2,18 @@
 
 ## Project structure
 
-- `pronto` is the generic build system split out of `conda-express`
-  for producing ready-to-run conda bootstrap binaries.
+- `pronto` is the generic build system for producing ready-to-run conda
+  bootstrap binaries.
 
 - The Cargo workspace has one package, `pronto`, with two binaries:
-  `pronto` for the builder CLI and `cx` for the bootstrap runtime that
-  Pronto stages into distribution artifacts.
+  `pronto` for the builder CLI and `pronto-runtime` as the generic bootstrap
+  runtime template that Pronto stages into distribution artifacts.
 
 - Do not add browser, WebAssembly, Emscripten, or JupyterLite behavior
   here. That work belongs in the separate `conda-wasm` repository.
 
-- Avoid new `conda-express` distribution opinions in generic builder
-  paths. Distribution defaults belong in downstream config.
+- Avoid distribution-specific opinions in generic builder paths. Distribution
+  defaults belong in downstream config.
 
 - Tests for Rust live in `tests/` and inline `#[cfg(test)]` modules.
   Integration tests for the Python wheel go in `python/tests/`.

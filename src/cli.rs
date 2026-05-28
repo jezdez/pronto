@@ -7,20 +7,44 @@ use clap::Parser;
 const AFTER_HELP: &str = concat!(
     "\x1b[1;4mQuick start:\x1b[0m
 
-  cx bootstrap                           Install conda into ~/.cx
-  cx create -n myenv python=3.12 numpy   Create an environment
-  cx shell myenv                         Activate (spawns a subshell)
+  ",
+    env!("PRONTO_RUNTIME_NAME"),
+    " bootstrap                           Install conda into ~/",
+    env!("PRONTO_RUNTIME_PREFIX_DIR"),
+    "
+  ",
+    env!("PRONTO_RUNTIME_NAME"),
+    " create -n myenv python=3.12 numpy   Create an environment
+  ",
+    env!("PRONTO_RUNTIME_NAME"),
+    " shell myenv                         Activate (spawns a subshell)
   exit                                   Leave the environment
 
 \x1b[1;4mManagement:\x1b[0m
 
-  cx status                              Show installation details
-  cx uninstall                           Remove conda prefix and all environments
+  ",
+    env!("PRONTO_RUNTIME_NAME"),
+    " status                              Show installation details
+  ",
+    env!("PRONTO_RUNTIME_NAME"),
+    " uninstall                           Remove conda prefix and all environments
 
 \x1b[1;4mPass-through:\x1b[0m
 
   Any command not listed above is passed through to conda:
-  cx install, cx remove, cx list, cx env, cx info, cx config, ...
+  ",
+    env!("PRONTO_RUNTIME_NAME"),
+    " install, ",
+    env!("PRONTO_RUNTIME_NAME"),
+    " remove, ",
+    env!("PRONTO_RUNTIME_NAME"),
+    " list, ",
+    env!("PRONTO_RUNTIME_NAME"),
+    " env, ",
+    env!("PRONTO_RUNTIME_NAME"),
+    " info, ",
+    env!("PRONTO_RUNTIME_NAME"),
+    " config, ...
 
 \x1b[4mDocs:\x1b[0m ",
     env!("PRONTO_DOCS_URL")
@@ -35,12 +59,12 @@ pub enum Verbosity {
 
 #[derive(Debug, Parser)]
 #[clap(
-    name = "cx",
-    about = "Lightweight single-binary conda bootstrapper powered by rattler",
+    name = env!("PRONTO_RUNTIME_NAME"),
+    about = "Single-binary conda bootstrapper powered by rattler",
     disable_help_subcommand = true,
-    long_about = "cx is a lightweight, single-binary bootstrapper for conda.\n\n\
-        It installs a minimal conda environment from an embedded lockfile in seconds,\n\
-        uses conda-rattler-solver for solves, and conda-spawn for activation.",
+    long_about = "This runtime is a single-binary bootstrapper for conda.\n\n\
+        It installs a conda environment from an embedded lockfile, uses \
+        conda-rattler-solver for solves, and conda-spawn for activation.",
     version,
     after_help = AFTER_HELP,
     allow_external_subcommands = true,
@@ -78,7 +102,7 @@ pub enum Command {
         #[clap(long)]
         force: bool,
 
-        /// Target prefix directory (default: ~/.cx)
+        /// Target prefix directory (default: distribution-specific home prefix)
         #[clap(long)]
         prefix: Option<PathBuf>,
 
@@ -108,9 +132,9 @@ pub enum Command {
         offline: bool,
     },
 
-    /// Print cx status (prefix, channels, packages)
+    /// Print runtime status (prefix, channels, packages)
     Status {
-        /// Target prefix directory (default: ~/.cx)
+        /// Target prefix directory (default: distribution-specific home prefix)
         #[clap(long)]
         prefix: Option<PathBuf>,
     },
@@ -121,9 +145,9 @@ pub enum Command {
         env: Option<String>,
     },
 
-    /// Uninstall cx: remove the conda prefix and environments
+    /// Uninstall this runtime: remove the conda prefix and environments
     Uninstall {
-        /// Target prefix directory (default: ~/.cx)
+        /// Target prefix directory (default: distribution-specific home prefix)
         #[clap(long)]
         prefix: Option<PathBuf>,
 
@@ -150,7 +174,7 @@ mod tests {
 
     #[test]
     fn test_parse_bootstrap_defaults() {
-        let cli = Cli::parse_from(["cx", "bootstrap"]);
+        let cli = Cli::parse_from(["pronto-runtime", "bootstrap"]);
         assert_matches!(
             cli.command,
             Some(Command::Bootstrap {
@@ -168,7 +192,13 @@ mod tests {
 
     #[test]
     fn test_parse_bootstrap_force_prefix() {
-        let cli = Cli::parse_from(["cx", "bootstrap", "--force", "--prefix", "/tmp/test"]);
+        let cli = Cli::parse_from([
+            "pronto-runtime",
+            "bootstrap",
+            "--force",
+            "--prefix",
+            "/tmp/test",
+        ]);
         assert_matches!(
             cli.command,
             Some(Command::Bootstrap { force: true, prefix: Some(ref p), .. })
@@ -178,7 +208,7 @@ mod tests {
 
     #[test]
     fn test_parse_bootstrap_channels_packages() {
-        let cli = Cli::parse_from(["cx", "bootstrap", "-c", "main", "-p", "numpy"]);
+        let cli = Cli::parse_from(["pronto-runtime", "bootstrap", "-c", "main", "-p", "numpy"]);
         assert_matches!(
             cli.command,
             Some(Command::Bootstrap { channel: Some(ref c), package: Some(ref p), .. })
@@ -189,7 +219,7 @@ mod tests {
     #[test]
     fn test_parse_bootstrap_multiple_channels_packages() {
         let cli = Cli::parse_from([
-            "cx",
+            "pronto-runtime",
             "bootstrap",
             "-c",
             "conda-forge",
@@ -210,7 +240,7 @@ mod tests {
 
     #[test]
     fn test_parse_bootstrap_no_lock() {
-        let cli = Cli::parse_from(["cx", "bootstrap", "--no-lock"]);
+        let cli = Cli::parse_from(["pronto-runtime", "bootstrap", "--no-lock"]);
         assert_matches!(
             cli.command,
             Some(Command::Bootstrap {
@@ -223,7 +253,7 @@ mod tests {
 
     #[test]
     fn test_parse_bootstrap_lockfile() {
-        let cli = Cli::parse_from(["cx", "bootstrap", "--lockfile", "/tmp/my.lock"]);
+        let cli = Cli::parse_from(["pronto-runtime", "bootstrap", "--lockfile", "/tmp/my.lock"]);
         assert_matches!(
             cli.command,
             Some(Command::Bootstrap { no_lock: false, lockfile: Some(ref p), .. })
@@ -233,23 +263,28 @@ mod tests {
 
     #[test]
     fn test_parse_status() {
-        let cli = Cli::parse_from(["cx", "status"]);
+        let cli = Cli::parse_from(["pronto-runtime", "status"]);
         assert_matches!(cli.command, Some(Command::Status { prefix: None }));
     }
 
     #[test]
     fn test_parse_status_with_prefix() {
-        let cli = Cli::parse_from(["cx", "status", "--prefix", "/opt/cx"]);
+        let cli = Cli::parse_from([
+            "pronto-runtime",
+            "status",
+            "--prefix",
+            "/opt/pronto-runtime",
+        ]);
         assert_matches!(
             cli.command,
             Some(Command::Status { prefix: Some(ref p) })
-                if p == std::path::Path::new("/opt/cx")
+                if p == std::path::Path::new("/opt/pronto-runtime")
         );
     }
 
     #[test]
     fn test_parse_shell_with_env() {
-        let cli = Cli::parse_from(["cx", "shell", "myenv"]);
+        let cli = Cli::parse_from(["pronto-runtime", "shell", "myenv"]);
         assert_matches!(
             cli.command,
             Some(Command::Shell { env: Some(ref e) }) if e == "myenv"
@@ -258,13 +293,13 @@ mod tests {
 
     #[test]
     fn test_parse_shell_no_env() {
-        let cli = Cli::parse_from(["cx", "shell"]);
+        let cli = Cli::parse_from(["pronto-runtime", "shell"]);
         assert_matches!(cli.command, Some(Command::Shell { env: None }));
     }
 
     #[test]
     fn test_parse_uninstall_yes() {
-        let cli = Cli::parse_from(["cx", "uninstall", "--yes"]);
+        let cli = Cli::parse_from(["pronto-runtime", "uninstall", "--yes"]);
         assert_matches!(
             cli.command,
             Some(Command::Uninstall {
@@ -276,61 +311,70 @@ mod tests {
 
     #[test]
     fn test_parse_uninstall_with_prefix() {
-        let cli = Cli::parse_from(["cx", "uninstall", "--prefix", "/opt/cx", "-y"]);
+        let cli = Cli::parse_from([
+            "pronto-runtime",
+            "uninstall",
+            "--prefix",
+            "/opt/pronto-runtime",
+            "-y",
+        ]);
         assert_matches!(
             cli.command,
             Some(Command::Uninstall { yes: true, prefix: Some(ref p) })
-                if p == std::path::Path::new("/opt/cx")
+                if p == std::path::Path::new("/opt/pronto-runtime")
         );
     }
 
     #[test]
     fn test_parse_no_args() {
-        let cli = Cli::parse_from(["cx"]);
-        assert!(cli.command.is_none(), "bare `cx` should have no command");
+        let cli = Cli::parse_from(["pronto-runtime"]);
+        assert!(
+            cli.command.is_none(),
+            "bare `runtime` should have no command"
+        );
     }
 
     #[test]
     fn test_parse_verbose_flag() {
-        let cli = Cli::parse_from(["cx", "--verbose", "bootstrap"]);
+        let cli = Cli::parse_from(["pronto-runtime", "--verbose", "bootstrap"]);
         assert_eq!(cli.verbosity(), Verbosity::Verbose);
     }
 
     #[test]
     fn test_parse_quiet_flag() {
-        let cli = Cli::parse_from(["cx", "--quiet", "bootstrap"]);
+        let cli = Cli::parse_from(["pronto-runtime", "--quiet", "bootstrap"]);
         assert_eq!(cli.verbosity(), Verbosity::Quiet);
     }
 
     #[test]
     fn test_parse_short_verbose_flag() {
-        let cli = Cli::parse_from(["cx", "-v", "status"]);
+        let cli = Cli::parse_from(["pronto-runtime", "-v", "status"]);
         assert_eq!(cli.verbosity(), Verbosity::Verbose);
     }
 
     #[test]
     fn test_parse_short_quiet_flag() {
-        let cli = Cli::parse_from(["cx", "-q", "status"]);
+        let cli = Cli::parse_from(["pronto-runtime", "-q", "status"]);
         assert_eq!(cli.verbosity(), Verbosity::Quiet);
     }
 
     #[test]
     fn test_parse_no_verbosity_flags() {
-        let cli = Cli::parse_from(["cx", "bootstrap"]);
+        let cli = Cli::parse_from(["pronto-runtime", "bootstrap"]);
         assert_eq!(cli.verbosity(), Verbosity::Normal);
     }
 
     #[test]
     fn test_verbose_quiet_conflict() {
-        let result = Cli::try_parse_from(["cx", "--verbose", "--quiet", "bootstrap"]);
+        let result = Cli::try_parse_from(["pronto-runtime", "--verbose", "--quiet", "bootstrap"]);
         assert!(result.is_err(), "--verbose and --quiet should conflict");
     }
 
     #[rstest]
-    #[case::bundle_only(&["cx", "bootstrap", "--bundle", "/tmp/pkgs"], Some("/tmp/pkgs"), false)]
-    #[case::offline_only(&["cx", "bootstrap", "--offline"], None, true)]
-    #[case::both(&["cx", "bootstrap", "--bundle", "/p", "--offline"], Some("/p"), true)]
-    #[case::defaults(&["cx", "bootstrap"], None, false)]
+    #[case::bundle_only(&["pronto-runtime", "bootstrap", "--bundle", "/tmp/pkgs"], Some("/tmp/pkgs"), false)]
+    #[case::offline_only(&["pronto-runtime", "bootstrap", "--offline"], None, true)]
+    #[case::both(&["pronto-runtime", "bootstrap", "--bundle", "/p", "--offline"], Some("/p"), true)]
+    #[case::defaults(&["pronto-runtime", "bootstrap"], None, false)]
     fn test_parse_bootstrap_offline_flags(
         #[case] args: &[&str],
         #[case] expected_bundle: Option<&str>,

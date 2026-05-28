@@ -15,8 +15,6 @@ on:
       - "pixi.toml"
       - "pixi.lock"
       - "pyproject.toml"
-      - "artifact.lock"
-      - "artifact.lock.hash"
   pull_request:
     branches: [main]
     paths:
@@ -31,8 +29,6 @@ on:
       - "pixi.toml"
       - "pixi.lock"
       - "pyproject.toml"
-      - "artifact.lock"
-      - "artifact.lock.hash"
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -75,40 +71,41 @@ jobs:
       - name: Test
         run: pixi run test
 
-      - name: Smoke test
+      - name: Build smoke runtime
+        shell: bash
+        run: pixi run -- cargo run -p pronto -- build --layout none --name demo --target-label "$TARGET"
+
+      - name: Smoke test built runtime
         shell: bash
         run: |
           if [[ "$TARGET" == *"windows"* ]]; then
-            BIN="target/release/cx.exe"
+            BIN="./dist/demo-${TARGET}.exe"
           else
-            BIN="target/release/cx"
+            BIN="./dist/demo-${TARGET}"
           fi
-          "$BIN" bootstrap --prefix "$RUNNER_TEMP/cx-smoke"
-          "$BIN" status --prefix "$RUNNER_TEMP/cx-smoke"
+          "$BIN" bootstrap --prefix "$RUNNER_TEMP/demo-smoke"
+          "$BIN" status --prefix "$RUNNER_TEMP/demo-smoke"
 
-      - name: Build cxz (embedded bundle)
+      - name: Build embedded bundle
         if: matrix.target == 'x86_64-unknown-linux-gnu'
-        run: pixi run -- cargo run -p pronto -- build --layout embedded --target-label "$TARGET"
+        run: pixi run -- cargo run -p pronto -- build --layout embedded --name demo --target-label "$TARGET"
 
-      - name: Smoke test cxz
+      - name: Smoke test embedded bundle
         if: matrix.target == 'x86_64-unknown-linux-gnu'
         shell: bash
         run: |
-          cp target/release/cx cxz
-          ./cxz bootstrap --prefix "$RUNNER_TEMP/cxz-smoke"
-          ./cxz status --prefix "$RUNNER_TEMP/cxz-smoke"
+          ./dist/demoz-"$TARGET" bootstrap --prefix "$RUNNER_TEMP/demoz-smoke"
+          ./dist/demoz-"$TARGET" status --prefix "$RUNNER_TEMP/demoz-smoke"
 
-      - name: Stage binary
+      - name: Stage canary binary
         shell: bash
         run: |
           if [[ "$TARGET" == *"windows"* ]]; then
-            BIN_NAME="cx.exe"
-            ASSET_NAME="cx-${TARGET}.exe"
+            ASSET_NAME="demo-${TARGET}.exe"
           else
-            BIN_NAME="cx"
-            ASSET_NAME="cx-${TARGET}"
+            ASSET_NAME="demo-${TARGET}"
           fi
-          cp "target/release/${BIN_NAME}" "${ASSET_NAME}"
+          cp "dist/${ASSET_NAME}" "${ASSET_NAME}"
           echo "ASSET_NAME=${ASSET_NAME}" >> "$GITHUB_ENV"
 
       - name: Upload canary binary
@@ -155,7 +152,7 @@ jobs:
         with:
           cache: true
       - uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
-      - name: Check artifact.lock freshness
+      - name: Check runtime lock derivation
         run: pixi run check-lock
       - name: Lint
         run: pixi run lint

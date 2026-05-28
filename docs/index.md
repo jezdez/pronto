@@ -2,46 +2,56 @@
 
 Build ready-to-run conda bootstrap binaries.
 
-`pronto` is the generic builder and runtime foundation for `cx` / `cxz`-style
-conda distributions. It is being split out of `conda-express` so the reusable
-build system can evolve independently from opinionated distributions.
+`pronto` is a generic builder and runtime template for single-binary conda
+distributions. It does not ship a first-party distribution runtime. Downstream
+projects choose the binary name, package set, channels, documentation URL, and
+release channel.
 
-## Artifact layouts
+Use these docs by goal:
 
-| Layout | Output | Use |
-|---|---|---|
-| `none` | `<name>` | Embedded lock and metadata; packages download during bootstrap |
-| `external` | `<name>` plus `<name>.bundle.tar.zst` | Runtime binary paired with a compressed bundle |
-| `embedded` | `<name>z` | Runtime plus compressed bundle embedded in one binary |
-
-## CLI workflow
-
-Use the CLI locally the same way the GitHub Action builds release artifacts:
-
-```bash
-pronto lock
-pronto inspect
-pronto build --layout none --name cx
-pronto build --layout embedded --name cx
-pronto run -- bootstrap --prefix /tmp/cx-smoke
-```
-
-`pronto build` stages the binary and writes the artifact lock, package list,
-info JSON, and SHA256 checksum file next to it.
-
-The GitHub Action accepts `docs-url` to embed a distribution-specific docs link
-in the runtime help output.
-
-Runtime channels, packages, and excludes are configured in `pixi.toml` under
-`[tool.pronto]`.
-
-`pronto` is not an OS installer generator. It produces bootstrap binaries that
-can be distributed directly or wrapped by Homebrew, constructor, Docker,
-enterprise packaging systems, and other release tooling.
+- Start with the tutorial if you want a guided first build.
+- Use how-to guides when you already know what you need to do.
+- Use reference pages for exact command, action, configuration, and artifact
+  details.
+- Read explanation pages for the design model behind Pronto.
 
 ```{toctree}
-:hidden:
+:caption: Tutorials
+:maxdepth: 1
+
+tutorials/first-runtime
+```
+
+```{toctree}
+:caption: How-To Guides
+:maxdepth: 1
+
+how-to/build-locally
+how-to/build-in-github-actions
+how-to/build-offline-artifacts
+```
+
+```{toctree}
+:caption: Reference
+:maxdepth: 1
+
+reference/cli
+reference/github-action
+reference/configuration
+reference/artifacts
+```
+
+```{toctree}
+:caption: Explanation
+:maxdepth: 1
+
+explanation/concepts
+explanation/runtime-template
+```
+
+```{toctree}
 :caption: Project
+:maxdepth: 1
 
 roadmap
 ```

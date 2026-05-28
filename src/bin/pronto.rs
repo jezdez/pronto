@@ -33,9 +33,9 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Extract artifact.lock from pixi.lock's runtime environment and apply exclude filters
+    /// Derive the runtime lock from pixi.lock's runtime environment and filters
     Lock {
-        /// Only verify artifact.lock is up-to-date; exit 1 if stale
+        /// Only verify that the runtime lock can be derived; do not write it
         #[arg(long)]
         check: bool,
 
@@ -44,7 +44,7 @@ enum Command {
         root: Option<PathBuf>,
     },
 
-    /// Download packages from artifact.lock and bundle them for embedded builds
+    /// Download packages from the derived runtime lock and bundle them
     Bundle {
         /// Target platform (default: current)
         #[arg(long)]
@@ -61,8 +61,8 @@ enum Command {
         #[arg(long, value_enum, default_value_t = BundleLayout::None)]
         layout: BundleLayout,
 
-        /// Base artifact name
-        #[arg(long, default_value = "cx")]
+        /// Distribution binary name to stage
+        #[arg(long)]
         name: String,
 
         /// Optional target label appended to staged artifact names
@@ -92,8 +92,8 @@ enum Command {
         #[arg(long, value_enum, default_value_t = BundleLayout::None)]
         layout: BundleLayout,
 
-        /// Base artifact name
-        #[arg(long, default_value = "cx")]
+        /// Distribution binary name to stage
+        #[arg(long)]
         name: String,
 
         /// Conda platform to bundle/describe (default: current)
@@ -113,7 +113,7 @@ enum Command {
         args: Vec<OsString>,
     },
 
-    /// Inspect artifact.lock
+    /// Inspect the derived runtime lock
     Inspect {
         /// Conda platform to inspect (default: current)
         #[arg(long)]
@@ -147,6 +147,10 @@ enum Command {
         root: Option<PathBuf>,
     },
 }
+
+const PRONTO_STATE_DIR: &str = "target/pronto";
+const RUNTIME_LOCK_FILE: &str = "runtime.lock";
+const BUNDLE_ARCHIVE_FILE: &str = "bundle.tar.zst";
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
 enum BundleLayout {
@@ -184,46 +188,47 @@ fn project_root(override_root: Option<&Path>) -> PathBuf {
         .to_path_buf()
 }
 
-fn write_artifact_lock(check: bool, root_override: Option<PathBuf>) {
+struct DerivedRuntimeLock {
+    lock_file: LockFile,
+    content: String,
+    platforms: Vec<Platform>,
+    total_packages: usize,
+    total_excluded: usize,
+}
+
+fn write_runtime_lock(check: bool, root_override: Option<PathBuf>) {
     let root = project_root(root_override.as_deref());
+    let derived = derive_runtime_lock(&root);
+
+    if check {
+        eprintln!(
+            "runtime lock can be derived: {} packages across {} platforms (excluded {})",
+            derived.total_packages,
+            derived.platforms.len(),
+            derived.total_excluded
+        );
+        return;
+    }
+
+    let runtime_lock_path = generated_runtime_lock_path(&root);
+    write_generated_runtime_lock(&runtime_lock_path, &derived.content);
+    eprintln!(
+        "wrote {}: {} packages across {} platforms (excluded {})",
+        runtime_lock_path.display(),
+        derived.total_packages,
+        derived.platforms.len(),
+        derived.total_excluded
+    );
+}
+
+fn derive_runtime_lock(root: &Path) -> DerivedRuntimeLock {
     let pixi_lock_path = root.join("pixi.lock");
-    let artifact_lock_path = root.join("artifact.lock");
-    let artifact_hash_path = root.join("artifact.lock.hash");
     let pixi_toml_path = root.join("pixi.toml");
 
     let pixi_toml = std::fs::read_to_string(&pixi_toml_path)
         .unwrap_or_else(|e| panic!("failed to read {}: {e}", pixi_toml_path.display()));
     let pixi_lock_content = std::fs::read_to_string(&pixi_lock_path)
         .unwrap_or_else(|e| panic!("failed to read {}: {e}", pixi_lock_path.display()));
-
-    let input_hash = {
-        let mut hasher = Sha256::new();
-        hasher.update(pixi_toml.as_bytes());
-        hasher.update(pixi_lock_content.as_bytes());
-        let digest = hasher.finalize();
-        digest
-            .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect::<String>()
-    };
-
-    if check {
-        if !artifact_lock_path.exists() {
-            eprintln!("artifact.lock does not exist; run `pronto lock` to create it");
-            std::process::exit(1);
-        }
-        if !artifact_hash_path.exists() {
-            eprintln!("artifact.lock.hash does not exist; run `pronto lock` to create it");
-            std::process::exit(1);
-        }
-        let stored_hash = std::fs::read_to_string(&artifact_hash_path).unwrap_or_default();
-        if stored_hash.trim() != input_hash {
-            eprintln!("artifact.lock is stale (hash mismatch); run `pronto lock` to update");
-            std::process::exit(1);
-        }
-        eprintln!("artifact.lock is up-to-date");
-        return;
-    }
 
     let config: PixiToml =
         toml::from_str(&pixi_toml).expect("failed to parse [tool.pronto] from pixi.toml");
@@ -239,6 +244,7 @@ fn write_artifact_lock(check: bool, root_override: Option<PathBuf>) {
     });
 
     let mut builder = LockFileBuilder::new();
+    let platforms: Vec<Platform> = runtime_env.platforms().collect();
 
     if !runtime_env.channels().is_empty() {
         builder.set_channels("default", runtime_env.channels().iter().cloned());
@@ -274,20 +280,24 @@ fn write_artifact_lock(check: bool, root_override: Option<PathBuf>) {
     let new_lock = builder.finish();
     let new_content = new_lock
         .render_to_string()
-        .expect("failed to render artifact.lock");
+        .expect("failed to render runtime lock");
 
-    std::fs::write(&artifact_lock_path, &new_content)
-        .unwrap_or_else(|e| panic!("failed to write {}: {e}", artifact_lock_path.display()));
-    std::fs::write(&artifact_hash_path, &input_hash)
-        .unwrap_or_else(|e| panic!("failed to write {}: {e}", artifact_hash_path.display()));
-
-    let platforms: Vec<Platform> = runtime_env.platforms().collect();
-    eprintln!(
-        "wrote artifact.lock: {} packages across {} platforms (excluded {})",
+    DerivedRuntimeLock {
+        lock_file: new_lock,
+        content: new_content,
+        platforms,
         total_packages,
-        platforms.len(),
-        total_excluded
-    );
+        total_excluded,
+    }
+}
+
+fn write_generated_runtime_lock(path: &Path, content: &str) {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .unwrap_or_else(|e| panic!("failed to create {}: {e}", parent.display()));
+    }
+    std::fs::write(path, content)
+        .unwrap_or_else(|e| panic!("failed to write {}: {e}", path.display()));
 }
 
 fn parse_pixi_lock(pixi_lock_content: &str, pixi_lock_path: &Path) -> LockFile {
@@ -376,22 +386,29 @@ fn filter_excluded(
 
 fn gen_bundle(platform_str: Option<String>, root_override: Option<PathBuf>) {
     let root = project_root(root_override.as_deref());
-    let artifact_lock_path = root.join("artifact.lock");
-    let bundle_path = root.join("bundle.tar.zst");
+    let derived = derive_runtime_lock(&root);
+    let runtime_lock_path = generated_runtime_lock_path(&root);
+    write_generated_runtime_lock(&runtime_lock_path, &derived.content);
+    let bundle_path = generated_bundle_path(&root);
 
-    let platform = if let Some(ref s) = platform_str {
-        s.parse::<Platform>()
-            .unwrap_or_else(|_| panic!("invalid platform: {s}"))
-    } else {
-        Platform::current()
-    };
+    let platform = parse_platform(platform_str);
+    gen_bundle_from_lock(
+        &derived.lock_file,
+        &runtime_lock_path,
+        platform,
+        &bundle_path,
+    );
+}
 
-    let lock_file = LockFile::from_path(&artifact_lock_path)
-        .unwrap_or_else(|e| panic!("failed to parse {}: {e}", artifact_lock_path.display()));
-
+fn gen_bundle_from_lock(
+    lock_file: &LockFile,
+    runtime_lock_path: &Path,
+    platform: Platform,
+    bundle_path: &Path,
+) -> PathBuf {
     let env = lock_file
         .default_environment()
-        .unwrap_or_else(|| panic!("no default environment in {}", artifact_lock_path.display()));
+        .unwrap_or_else(|| panic!("no default environment in {}", runtime_lock_path.display()));
 
     let packages: Vec<_> = env
         .conda_packages_by_platform()
@@ -402,7 +419,7 @@ fn gen_bundle(platform_str: Option<String>, root_override: Option<PathBuf>) {
     if packages.is_empty() {
         panic!(
             "no packages for platform {platform} in {}",
-            artifact_lock_path.display()
+            runtime_lock_path.display()
         );
     }
 
@@ -413,8 +430,9 @@ fn gen_bundle(platform_str: Option<String>, root_override: Option<PathBuf>) {
         .build()
         .expect("failed to create tokio runtime");
 
-    rt.block_on(download_and_bundle(&packages, &bundle_path))
+    rt.block_on(download_and_bundle(&packages, bundle_path))
         .expect("failed to download bundle");
+    bundle_path.to_path_buf()
 }
 
 async fn download_and_bundle(
@@ -429,6 +447,7 @@ async fn download_and_bundle(
         .parent()
         .expect("bundle path has parent")
         .join("bundle");
+    std::fs::create_dir_all(bundle_path.parent().expect("bundle path has parent"))?;
     std::fs::create_dir_all(&bundle_dir)?;
 
     let start = std::time::Instant::now();
@@ -597,13 +616,27 @@ fn build_artifact(
     let root = project_root(root_override.as_deref());
     let platform = parse_platform(platform_str);
 
-    write_artifact_lock(false, Some(root.clone()));
+    let derived = derive_runtime_lock(&root);
+    let runtime_lock_path = generated_runtime_lock_path(&root);
+    write_generated_runtime_lock(&runtime_lock_path, &derived.content);
 
-    if layout.needs_bundle() {
-        gen_bundle(Some(platform.to_string()), Some(root.clone()));
-    }
+    let generated_bundle = layout.needs_bundle().then(|| {
+        gen_bundle_from_lock(
+            &derived.lock_file,
+            &runtime_lock_path,
+            platform,
+            &generated_bundle_path(&root),
+        )
+    });
 
-    run_cargo_build(&root, layout == BundleLayout::Embedded, target.as_deref());
+    run_cargo_build(
+        &root,
+        &name,
+        layout == BundleLayout::Embedded,
+        target.as_deref(),
+        &runtime_lock_path,
+        generated_bundle.as_deref(),
+    );
     stage_artifacts(
         &root,
         layout,
@@ -612,6 +645,8 @@ fn build_artifact(
         platform,
         target.as_deref(),
         &out_dir,
+        &derived,
+        generated_bundle.as_deref(),
     )
 }
 
@@ -624,6 +659,7 @@ fn run_artifact(
     args: Vec<OsString>,
 ) {
     let root = project_root(root_override.as_deref());
+    let bundle_env_var = runtime_env_var(&name, "BUNDLE");
     let output = build_artifact(
         layout,
         name,
@@ -637,7 +673,7 @@ fn run_artifact(
     let mut command = std::process::Command::new(&output.binary);
     command.args(args);
     if layout == BundleLayout::External {
-        command.env("CX_BUNDLE", root.join("bundle"));
+        command.env(bundle_env_var, root.join("bundle"));
     }
 
     let status = command
@@ -650,18 +686,17 @@ fn run_artifact(
 
 fn inspect_artifact(platform_str: Option<String>, json: bool, root_override: Option<PathBuf>) {
     let root = project_root(root_override.as_deref());
-    let artifact_lock_path = root.join("artifact.lock");
+    let derived = derive_runtime_lock(&root);
     let platform = parse_platform(platform_str);
-    let lock_file = LockFile::from_path(&artifact_lock_path)
-        .unwrap_or_else(|e| panic!("failed to parse {}: {e}", artifact_lock_path.display()));
+    let runtime_lock_path = generated_runtime_lock_path(&root);
 
-    let summaries = platform_summaries(&lock_file, &artifact_lock_path);
-    let packages = packages_for_platform(&lock_file, &artifact_lock_path, platform);
+    let summaries = platform_summaries(&derived.lock_file, &runtime_lock_path);
+    let packages = packages_for_platform(&derived.lock_file, &runtime_lock_path, platform);
     let package_infos = package_infos(&packages);
 
     if json {
         let inspect = LockInspect {
-            lock: artifact_lock_path.display().to_string(),
+            lock: "derived runtime lock".to_string(),
             selected_platform: platform.to_string(),
             platforms: summaries,
             packages: package_infos,
@@ -673,7 +708,7 @@ fn inspect_artifact(platform_str: Option<String>, json: bool, root_override: Opt
         return;
     }
 
-    println!("{}", artifact_lock_path.display());
+    println!("derived runtime lock");
     for summary in summaries {
         println!("  {}: {} packages", summary.platform, summary.packages);
     }
@@ -684,21 +719,53 @@ fn inspect_artifact(platform_str: Option<String>, json: bool, root_override: Opt
     }
 }
 
-fn run_cargo_build(root: &Path, embed_bundle: bool, target: Option<&str>) {
+fn run_cargo_build(
+    root: &Path,
+    name: &str,
+    embed_bundle: bool,
+    target: Option<&str>,
+    runtime_lock: &Path,
+    bundle: Option<&Path>,
+) {
+    let command_name = if embed_bundle {
+        format!("{name}z")
+    } else {
+        name.to_string()
+    };
     let mut command = std::process::Command::new("cargo");
     command
         .arg("build")
         .arg("--release")
         .arg("--bin")
-        .arg("cx")
+        .arg("pronto-runtime")
+        .arg("--features")
+        .arg("runtime-template")
         .current_dir(root);
     if let Some(target) = target {
         command.arg("--target").arg(target);
     }
+    command
+        .env("PRONTO_RUNTIME_NAME", command_name)
+        .env("PRONTO_RUNTIME_EMBEDDED_NAME", format!("{name}z"))
+        .env("PRONTO_RUNTIME_DISPLAY_NAME", name)
+        .env("PRONTO_RUNTIME_PREFIX_DIR", format!(".{name}"))
+        .env("PRONTO_RUNTIME_METADATA_FILE", format!(".{name}.json"))
+        .env("PRONTO_RUNTIME_LOCK", runtime_lock)
+        .env(
+            "PRONTO_RUNTIME_BUNDLE_ENV_VAR",
+            runtime_env_var(name, "BUNDLE"),
+        )
+        .env(
+            "PRONTO_RUNTIME_OFFLINE_ENV_VAR",
+            runtime_env_var(name, "OFFLINE"),
+        );
     if embed_bundle {
+        let bundle = bundle.expect("embedded builds require a generated bundle");
         command.env("PRONTO_EMBED_BUNDLE", "1");
+        command.env("PRONTO_BUNDLE", bundle);
     } else {
         command.env_remove("PRONTO_EMBED_BUNDLE");
+        command.env_remove("PRONTO_BUNDLE");
     }
 
     let status = command.status().expect("failed to run cargo build");
@@ -707,6 +774,7 @@ fn run_cargo_build(root: &Path, embed_bundle: bool, target: Option<&str>) {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn stage_artifacts(
     root: &Path,
     layout: BundleLayout,
@@ -715,6 +783,8 @@ fn stage_artifacts(
     platform: Platform,
     target: Option<&str>,
     out_dir: &Path,
+    derived: &DerivedRuntimeLock,
+    generated_bundle: Option<&Path>,
 ) -> BuildOutput {
     let out_dir = resolve_out_dir(root, out_dir);
     std::fs::create_dir_all(&out_dir)
@@ -733,9 +803,9 @@ fn stage_artifacts(
     });
 
     let bundle = if layout == BundleLayout::External {
-        let source_bundle = root.join("bundle.tar.zst");
+        let source_bundle = generated_bundle.expect("external builds require a generated bundle");
         let staged_bundle = out_dir.join(format!("{stem}.bundle.tar.zst"));
-        std::fs::copy(&source_bundle, &staged_bundle).unwrap_or_else(|e| {
+        std::fs::copy(source_bundle, &staged_bundle).unwrap_or_else(|e| {
             panic!(
                 "failed to copy {} to {}: {e}",
                 source_bundle.display(),
@@ -755,6 +825,7 @@ fn stage_artifacts(
         platform,
         &binary,
         bundle.as_deref(),
+        derived,
     );
 
     eprintln!("staged {}", binary.display());
@@ -782,6 +853,7 @@ struct ArtifactMetadataPaths {
     package_list: PathBuf,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn write_artifact_metadata(
     root: &Path,
     out_dir: &Path,
@@ -790,21 +862,15 @@ fn write_artifact_metadata(
     platform: Platform,
     binary: &Path,
     bundle: Option<&Path>,
+    derived: &DerivedRuntimeLock,
 ) -> ArtifactMetadataPaths {
-    let artifact_lock_path = root.join("artifact.lock");
-    let lock_file = LockFile::from_path(&artifact_lock_path)
-        .unwrap_or_else(|e| panic!("failed to parse {}: {e}", artifact_lock_path.display()));
-    let packages = packages_for_platform(&lock_file, &artifact_lock_path, platform);
+    let runtime_lock_path = generated_runtime_lock_path(root);
+    let packages = packages_for_platform(&derived.lock_file, &runtime_lock_path, platform);
     let package_infos = package_infos(&packages);
 
-    let lock = out_dir.join(format!("{stem}.artifact.lock"));
-    std::fs::copy(&artifact_lock_path, &lock).unwrap_or_else(|e| {
-        panic!(
-            "failed to copy {} to {}: {e}",
-            artifact_lock_path.display(),
-            lock.display()
-        )
-    });
+    let lock = out_dir.join(format!("{stem}.runtime.lock"));
+    std::fs::write(&lock, &derived.content)
+        .unwrap_or_else(|e| panic!("failed to write {}: {e}", lock.display()));
 
     let package_list = out_dir.join(format!("{stem}.packages.txt"));
     let package_list_content = render_package_list(&package_infos);
@@ -852,6 +918,14 @@ fn write_artifact_metadata(
     }
 }
 
+fn generated_runtime_lock_path(root: &Path) -> PathBuf {
+    root.join(PRONTO_STATE_DIR).join(RUNTIME_LOCK_FILE)
+}
+
+fn generated_bundle_path(root: &Path) -> PathBuf {
+    root.join(PRONTO_STATE_DIR).join(BUNDLE_ARCHIVE_FILE)
+}
+
 fn parse_platform(platform_str: Option<String>) -> Platform {
     if let Some(ref platform) = platform_str {
         platform
@@ -867,6 +941,11 @@ fn validate_artifact_name(name: &str) {
     assert!(
         !name.contains('/') && !name.contains('\\'),
         "artifact name must not contain path separators"
+    );
+    assert!(
+        name.chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-')),
+        "artifact name may only contain ASCII letters, digits, dots, dashes, and underscores"
     );
 }
 
@@ -899,11 +978,25 @@ fn source_binary_path(root: &Path, target: Option<&str>) -> PathBuf {
     }
     path.push("release");
     path.push(if target_is_windows(target) {
-        "cx.exe"
+        "pronto-runtime.exe"
     } else {
-        "cx"
+        "pronto-runtime"
     });
     path
+}
+
+fn runtime_env_var(name: &str, suffix: &str) -> String {
+    let prefix: String = name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() {
+                c.to_ascii_uppercase()
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    format!("{prefix}_{suffix}")
 }
 
 fn target_is_windows(target: Option<&str>) -> bool {
@@ -920,10 +1013,10 @@ fn resolve_out_dir(root: &Path, out_dir: &Path) -> PathBuf {
     }
 }
 
-fn platform_summaries(lock_file: &LockFile, artifact_lock_path: &Path) -> Vec<PlatformSummary> {
+fn platform_summaries(lock_file: &LockFile, runtime_lock_path: &Path) -> Vec<PlatformSummary> {
     let env = lock_file
         .default_environment()
-        .unwrap_or_else(|| panic!("no default environment in {}", artifact_lock_path.display()));
+        .unwrap_or_else(|| panic!("no default environment in {}", runtime_lock_path.display()));
 
     let mut summaries: Vec<_> = env
         .conda_packages_by_platform()
@@ -938,12 +1031,12 @@ fn platform_summaries(lock_file: &LockFile, artifact_lock_path: &Path) -> Vec<Pl
 
 fn packages_for_platform<'a>(
     lock_file: &'a LockFile,
-    artifact_lock_path: &Path,
+    runtime_lock_path: &Path,
     platform: Platform,
 ) -> Vec<&'a CondaPackageData> {
     let env = lock_file
         .default_environment()
-        .unwrap_or_else(|| panic!("no default environment in {}", artifact_lock_path.display()));
+        .unwrap_or_else(|| panic!("no default environment in {}", runtime_lock_path.display()));
 
     let packages: Vec<_> = env
         .conda_packages_by_platform()
@@ -954,7 +1047,7 @@ fn packages_for_platform<'a>(
     if packages.is_empty() {
         panic!(
             "no packages for platform {platform} in {}",
-            artifact_lock_path.display()
+            runtime_lock_path.display()
         );
     }
 
@@ -1111,7 +1204,7 @@ fn configure(
 fn main() {
     let cli = Cli::parse();
     match cli.command {
-        Command::Lock { check, root } => write_artifact_lock(check, root),
+        Command::Lock { check, root } => write_runtime_lock(check, root),
         Command::Bundle { platform, root } => gen_bundle(platform, root),
         Command::Build {
             layout,
@@ -1266,25 +1359,30 @@ mod tests {
     #[test]
     fn test_artifact_stem_embedded_adds_z_before_target_label() {
         assert_eq!(
-            artifact_stem("cx", BundleLayout::Embedded, Some("linux-64")),
-            "cxz-linux-64"
+            artifact_stem("demo", BundleLayout::Embedded, Some("linux-64")),
+            "demoz-linux-64"
         );
     }
 
     #[test]
     fn test_artifact_stem_external_keeps_base_name() {
         assert_eq!(
-            artifact_stem("cx", BundleLayout::External, Some("linux-64")),
-            "cx-linux-64"
+            artifact_stem("demo", BundleLayout::External, Some("linux-64")),
+            "demo-linux-64"
         );
     }
 
     #[test]
     fn test_binary_filename_uses_windows_extension_for_target() {
         assert_eq!(
-            binary_filename("cx", Some("x86_64-pc-windows-msvc")),
-            "cx.exe"
+            binary_filename("demo", Some("x86_64-pc-windows-msvc")),
+            "demo.exe"
         );
+    }
+
+    #[test]
+    fn test_runtime_env_var_sanitizes_artifact_name() {
+        assert_eq!(runtime_env_var("demo-tool", "BUNDLE"), "DEMO_TOOL_BUNDLE");
     }
 
     #[test]

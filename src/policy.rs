@@ -1,17 +1,17 @@
 //! Runtime distribution policy.
 //!
-//! The install/runtime code is generic. Values in this module describe the
-//! concrete `cx` distribution built from it.
+//! The install/runtime code is generic. Values in this module are embedded by
+//! the builder for each generated distribution.
 
 use std::path::PathBuf;
 
-pub(crate) const COMMAND_NAME: &str = "cx";
-pub(crate) const EMBEDDED_COMMAND_NAME: &str = "cxz";
-pub(crate) const DISPLAY_NAME: &str = "cx";
-pub(crate) const DEFAULT_PREFIX_DIR: &str = ".cx";
-pub(crate) const METADATA_FILE: &str = ".cx.json";
-pub(crate) const BUNDLE_ENV_VAR: &str = "CX_BUNDLE";
-pub(crate) const OFFLINE_ENV_VAR: &str = "CX_OFFLINE";
+pub(crate) const COMMAND_NAME: &str = env!("PRONTO_RUNTIME_NAME");
+pub(crate) const EMBEDDED_COMMAND_NAME: &str = env!("PRONTO_RUNTIME_EMBEDDED_NAME");
+pub(crate) const DISPLAY_NAME: &str = env!("PRONTO_RUNTIME_DISPLAY_NAME");
+pub(crate) const DEFAULT_PREFIX_DIR: &str = env!("PRONTO_RUNTIME_PREFIX_DIR");
+pub(crate) const METADATA_FILE: &str = env!("PRONTO_RUNTIME_METADATA_FILE");
+pub(crate) const BUNDLE_ENV_VAR: &str = env!("PRONTO_RUNTIME_BUNDLE_ENV_VAR");
+pub(crate) const OFFLINE_ENV_VAR: &str = env!("PRONTO_RUNTIME_OFFLINE_ENV_VAR");
 
 pub(crate) fn default_prefix() -> miette::Result<PathBuf> {
     let home =

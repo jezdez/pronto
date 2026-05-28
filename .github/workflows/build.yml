@@ -1,8 +1,12 @@
-name: Build custom cx
+name: Build custom conda runtime
 
 on:
   workflow_call:
     inputs:
+      name:
+        description: "Distribution binary name to build."
+        required: true
+        type: string
       packages:
         description: >
           Comma-separated conda package specs to include in the bootstrapper.
@@ -64,10 +68,11 @@ jobs:
             os: windows-latest
 
     steps:
-      - name: Build cx
+      - name: Build runtime
         id: build
         uses: jezdez/pronto@main
         with:
+          name: ${{ inputs.name }}
           packages: ${{ inputs.packages }}
           channels: ${{ inputs.channels }}
           exclude: ${{ inputs.exclude }}

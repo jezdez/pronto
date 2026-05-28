@@ -1,16 +1,16 @@
-//! Integration tests verifying the embedded artifact lock has been pre-filtered
-//! by `pronto lock` (exclude filter applied at build time).
+//! Integration tests verifying the embedded runtime lock has been pre-filtered.
+#![cfg(feature = "runtime-template")]
 
 use std::str::FromStr;
 
 use rattler_conda_types::{Platform, RepoDataRecord};
 use rattler_lock::LockFile;
 
-const EMBEDDED_LOCK: &str = include_str!(concat!(env!("OUT_DIR"), "/artifact.lock"));
+const EMBEDDED_LOCK: &str = include_str!(concat!(env!("OUT_DIR"), "/runtime.lock"));
 
 fn records_from_embedded_lock() -> Vec<RepoDataRecord> {
     let lock_file =
-        LockFile::from_str(EMBEDDED_LOCK).expect("failed to parse embedded artifact lock");
+        LockFile::from_str(EMBEDDED_LOCK).expect("failed to parse embedded runtime lock");
     let env = lock_file
         .default_environment()
         .expect("no default environment");
@@ -38,7 +38,7 @@ fn test_embedded_lockfile_package_composition() {
     for pkg in &excluded {
         assert!(
             !names.contains(&pkg.to_string()),
-            "embedded artifact lock should not contain {pkg} (pre-filtered by pronto lock)"
+            "embedded runtime lock should not contain {pkg}"
         );
     }
 
@@ -46,11 +46,11 @@ fn test_embedded_lockfile_package_composition() {
     for pkg in &required {
         assert!(
             names.contains(&pkg.to_string()),
-            "embedded artifact lock should contain {pkg}"
+            "embedded runtime lock should contain {pkg}"
         );
     }
     assert!(
         names.iter().any(|n| n.starts_with("python")),
-        "embedded artifact lock should contain python"
+        "embedded runtime lock should contain python"
     );
 }
