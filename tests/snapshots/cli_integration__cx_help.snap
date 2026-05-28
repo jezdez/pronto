@@ -3,10 +3,10 @@ source: tests/cli_integration.rs
 assertion_line: 19
 expression: stdout
 ---
-cx (conda-express) is a lightweight, single-binary bootstrapper for conda.
+cx is a lightweight, single-binary bootstrapper for conda.
 
 It installs a minimal conda environment from an embedded lockfile in seconds,
-uses conda-rattler-solver instead of libmamba, and conda-spawn for activation.
+uses conda-rattler-solver for solves, and conda-spawn for activation.
 
 Usage: cx [OPTIONS] [COMMAND]
 
@@ -47,4 +47,4 @@ Pass-through:
   Any command not listed above is passed through to conda:
   cx install, cx remove, cx list, cx env, cx info, cx config, ...
 
-Docs: https://jezdez.github.io/conda-express/
+Docs: https://jezdez.github.io/pronto/

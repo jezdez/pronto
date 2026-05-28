@@ -7,14 +7,14 @@ on:
         description: >
           Comma-separated conda package specs to include in the bootstrapper.
           Example: "python >=3.12, conda >=25.1, numpy, pandas"
-          Defaults to the packages defined in pixi.toml [tool.cx].
+          Defaults to the packages defined in pixi.toml [tool.pronto].
         required: false
         type: string
         default: ""
       channels:
         description: >
           Comma-separated conda channels.
-          Defaults to the channels defined in pixi.toml [tool.cx].
+          Defaults to the channels defined in pixi.toml [tool.pronto].
         required: false
         type: string
         default: ""
@@ -22,7 +22,7 @@ on:
         description: >
           Comma-separated packages to exclude from the bootstrapper
           (along with their exclusive dependencies).
-          Defaults to the excludes defined in pixi.toml [tool.cx].
+          Defaults to the excludes defined in pixi.toml [tool.pronto].
         required: false
         type: string
         default: ""
@@ -39,7 +39,7 @@ on:
       embed-bundle:
         description: >
           Embed package archives into the binary for offline bootstrap
-          (increases size by 40-85 MB depending on platform). The output binary is named cxz instead of cx.
+          (increases size by 40-85 MB depending on platform). The output binary uses the z-suffixed artifact name.
         required: false
         type: string
         default: "false"

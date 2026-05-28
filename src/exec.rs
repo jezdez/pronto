@@ -7,6 +7,8 @@ use std::process::Stdio;
 
 use miette::IntoDiagnostic;
 
+use crate::policy;
+
 pub(crate) fn conda_binary(prefix: &Path) -> std::path::PathBuf {
     if cfg!(windows) {
         prefix.join("Scripts").join("conda.exe")
@@ -82,7 +84,7 @@ pub fn run_conda_filtered(prefix: &Path, args: &[&str]) -> miette::Result<()> {
             println!("#");
             println!("# To activate this environment, use");
             println!("#");
-            println!("#     $ cx shell {name}");
+            println!("#     $ {} shell {name}", policy::COMMAND_NAME);
             println!("#");
             println!("# To leave the environment, exit the subshell (Ctrl+D or `exit`).");
             println!("#");

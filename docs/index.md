@@ -4,7 +4,7 @@ Build ready-to-run conda bootstrap binaries.
 
 `pronto` is the generic builder and runtime foundation for `cx` / `cxz`-style
 conda distributions. It is being split out of `conda-express` so the reusable
-build system can evolve independently from the opinionated distribution.
+build system can evolve independently from opinionated distributions.
 
 ## Artifact layouts
 
@@ -28,6 +28,9 @@ pronto run -- bootstrap --prefix /tmp/cx-smoke
 
 `pronto build` stages the binary and writes the artifact lock, package list,
 info JSON, and SHA256 checksum file next to it.
+
+Runtime channels, packages, and excludes are configured in `pixi.toml` under
+`[tool.pronto]`.
 
 `pronto` is not an OS installer generator. It produces bootstrap binaries that
 can be distributed directly or wrapped by Homebrew, constructor, Docker,

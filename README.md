@@ -26,8 +26,8 @@ artifact lock, a tab-separated package list, an info JSON document, and SHA256
 checksums. The GitHub Action uses the same build path and `embed-bundle: true`
 for embedded `cxz` builds.
 
-The remaining migration work is to split generic runtime behavior from the
-opinionated `conda-express` distribution.
+Generic runtime behavior stays here; opinionated package sets and distribution
+defaults belong in downstream distributions such as `conda-express`.
 
 `pronto` is not an OS installer generator and does not target `.sh`, `.pkg`, or
 `.msi` output. It produces bootstrap binaries that can be distributed directly

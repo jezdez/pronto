@@ -3,10 +3,10 @@ members = [".", "crates/pronto"]
 default-members = [".", "crates/pronto"]
 
 [package]
-name = "conda-express"
+name = "pronto-runtime"
 version = "0.6.0"
 edition = "2024"
-description = "A lightweight, single-binary conda bootstrapper — powered by rattler"
+description = "Runtime for pronto-built conda bootstrap binaries"
 license = "BSD-3-Clause"
 readme = "README.md"
 

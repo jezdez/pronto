@@ -5,6 +5,8 @@ use std::sync::LazyLock;
 
 use miette::IntoDiagnostic;
 
+use crate::policy;
+
 /// The rattler-lock v6 artifact lock embedded at compile time by `build.rs`.
 pub const EMBEDDED_LOCK: &str = include_str!(concat!(env!("OUT_DIR"), "/artifact.lock"));
 
@@ -14,10 +16,10 @@ pub const EMBEDDED_BUNDLE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/bun
 
 pub(crate) const INSTALL_METHOD: Option<&str> = option_env!("CX_INSTALL_METHOD");
 
-/// The `pixi.toml` embedded at compile time (contains `[tool.cx]`).
+/// The `pixi.toml` embedded at compile time (contains `[tool.pronto]`).
 const EMBEDDED_PIXI_TOML: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/pixi.toml"));
 
-// ─── [tool.cx] in pixi.toml ─────────────────────────────────────────────────
+// ─── [tool.pronto] in pixi.toml ──────────────────────────────────────────────
 
 #[derive(serde::Deserialize)]
 struct PixiToml {
@@ -26,11 +28,11 @@ struct PixiToml {
 
 #[derive(serde::Deserialize)]
 struct ToolSection {
-    cx: CxConfig,
+    pronto: RuntimeConfig,
 }
 
 #[derive(serde::Deserialize)]
-pub struct CxConfig {
+pub struct RuntimeConfig {
     pub channels: Vec<String>,
     pub packages: Vec<String>,
     #[serde(default)]
@@ -38,18 +40,18 @@ pub struct CxConfig {
     pub exclude: Vec<String>,
 }
 
-static EMBEDDED_CX_CONFIG: LazyLock<CxConfig> = LazyLock::new(|| {
+static EMBEDDED_RUNTIME_CONFIG: LazyLock<RuntimeConfig> = LazyLock::new(|| {
     let pixi: PixiToml =
-        toml::from_str(EMBEDDED_PIXI_TOML).expect("invalid [tool.cx] in pixi.toml");
-    pixi.tool.cx
+        toml::from_str(EMBEDDED_PIXI_TOML).expect("invalid [tool.pronto] in pixi.toml");
+    pixi.tool.pronto
 });
 
-/// Return a reference to the `[tool.cx]` section from the embedded `pixi.toml`.
-pub fn embedded_config() -> &'static CxConfig {
-    &EMBEDDED_CX_CONFIG
+/// Return a reference to the `[tool.pronto]` section from the embedded `pixi.toml`.
+pub fn embedded_config() -> &'static RuntimeConfig {
+    &EMBEDDED_RUNTIME_CONFIG
 }
 
-// ─── .cx.json (prefix metadata) ─────────────────────────────────────────────
+// ─── Prefix metadata ────────────────────────────────────────────────────────
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct PrefixMetadata {
@@ -59,7 +61,7 @@ pub struct PrefixMetadata {
 }
 
 fn metadata_path(prefix: &Path) -> PathBuf {
-    prefix.join(".cx.json")
+    prefix.join(policy::METADATA_FILE)
 }
 
 pub fn write_metadata(
@@ -95,18 +97,11 @@ pub fn read_metadata(prefix: &Path) -> miette::Result<PrefixMetadata> {
 
 /// Write a CEP 22 frozen marker to protect the base prefix from accidental
 /// modification. Users should create named environments for their work and
-/// use `conda self update` (via conda-self) to update the base installation.
+/// let the distribution decide how base updates are performed.
 /// See: <https://conda.org/learn/ceps/cep-0022/>
 pub fn write_frozen(prefix: &Path) -> miette::Result<()> {
     let frozen_path = prefix.join("conda-meta").join("frozen");
-    let contents = serde_json::json!({
-        "message": concat!(
-            "This base environment is managed by cx (conda-express).\n",
-            "Create a new environment instead: conda create -n myenv\n",
-            "To re-bootstrap: cx bootstrap --force\n",
-            "To override: pass --override-frozen-env"
-        )
-    });
+    let contents = serde_json::json!({ "message": policy::frozen_message() });
     std::fs::create_dir_all(prefix.join("conda-meta")).into_diagnostic()?;
     std::fs::write(
         &frozen_path,

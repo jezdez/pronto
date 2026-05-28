@@ -10,10 +10,11 @@ mod commands;
 mod config;
 mod exec;
 mod install;
+mod policy;
 
 use cli::{Cli, Command, LockSource};
 use commands::{
-    bootstrap, default_prefix, ensure_bootstrapped, is_bootstrapped, print_disabled_init,
+    bootstrap, ensure_bootstrapped, is_bootstrapped, print_disabled_init,
     print_disabled_shell_command, status, uninstall, validate_bootstrap_flags,
 };
 
@@ -60,7 +61,7 @@ async fn async_main() -> miette::Result<()> {
                     bundle,
                     offline,
                 }) => {
-                    let prefix = prefix.map(Ok).unwrap_or_else(default_prefix)?;
+                    let prefix = prefix.map(Ok).unwrap_or_else(policy::default_prefix)?;
                     let lock_source = if no_lock {
                         LockSource::None
                     } else if let Some(path) = lockfile {
@@ -70,13 +71,13 @@ async fn async_main() -> miette::Result<()> {
                     };
 
                     let bundle = bundle.or_else(|| {
-                        env::var("CX_BUNDLE")
+                        env::var(policy::BUNDLE_ENV_VAR)
                             .ok()
                             .filter(|v| !v.is_empty())
                             .map(std::path::PathBuf::from)
                     });
                     let offline = offline
-                        || env::var("CX_OFFLINE")
+                        || env::var(policy::OFFLINE_ENV_VAR)
                             .ok()
                             .filter(|v| !v.is_empty())
                             .is_some_and(|v| v != "0" && v.to_lowercase() != "false");
@@ -96,15 +97,15 @@ async fn async_main() -> miette::Result<()> {
                     .await;
                 }
                 Some(Command::Status { prefix }) => {
-                    let prefix = prefix.map(Ok).unwrap_or_else(default_prefix)?;
+                    let prefix = prefix.map(Ok).unwrap_or_else(policy::default_prefix)?;
                     return status(&prefix);
                 }
                 Some(Command::Uninstall { prefix, yes }) => {
-                    let prefix = prefix.map(Ok).unwrap_or_else(default_prefix)?;
+                    let prefix = prefix.map(Ok).unwrap_or_else(policy::default_prefix)?;
                     return uninstall(&prefix, yes, verbosity);
                 }
                 Some(Command::Shell { env }) => {
-                    let prefix = default_prefix()?;
+                    let prefix = policy::default_prefix()?;
                     ensure_bootstrapped(&prefix).await?;
                     let mut conda_args = vec!["spawn"];
                     if let Some(ref name) = env {
@@ -122,11 +123,12 @@ async fn async_main() -> miette::Result<()> {
                     Cli::parse_from(["cx", "--help"]);
                 }
                 None => {
-                    let prefix = default_prefix()?;
+                    let prefix = policy::default_prefix()?;
                     if !is_bootstrapped(&prefix) {
                         eprintln!(
-                            "{} No conda installation found. Run `cx bootstrap` first.",
-                            console::style("!").yellow().bold()
+                            "{} No conda installation found. Run `{} bootstrap` first.",
+                            console::style("!").yellow().bold(),
+                            policy::COMMAND_NAME
                         );
                         std::process::exit(1);
                     }
@@ -135,7 +137,7 @@ async fn async_main() -> miette::Result<()> {
             }
         }
         Some(_) => {
-            let prefix = default_prefix()?;
+            let prefix = policy::default_prefix()?;
             ensure_bootstrapped(&prefix).await?;
             let conda_args: Vec<&str> = raw_args[1..].iter().map(|s| s.as_str()).collect();
             if exec::should_filter_conda_output(&conda_args) {

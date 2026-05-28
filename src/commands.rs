@@ -10,13 +10,7 @@ use crate::cli::{LockSource, Verbosity};
 use crate::config::{
     EMBEDDED_LOCK, embedded_config, read_metadata, write_condarc, write_frozen, write_metadata,
 };
-use crate::{exec, install};
-
-pub(crate) fn default_prefix() -> miette::Result<std::path::PathBuf> {
-    let home =
-        dirs::home_dir().ok_or_else(|| miette::miette!("could not determine home directory"))?;
-    Ok(home.join(".cx"))
-}
+use crate::{exec, install, policy};
 
 pub(crate) fn is_bootstrapped(prefix: &Path) -> bool {
     prefix.join("conda-meta").is_dir()
@@ -205,8 +199,11 @@ pub(crate) async fn bootstrap(
             console::style("✔").green().bold()
         );
         eprintln!("   Prefix: {}", prefix.display());
-        eprintln!("   Run `cx status` for details.");
-        eprintln!("   Use `cx <conda-args>` to run conda commands.");
+        eprintln!("   Run `{} status` for details.", policy::COMMAND_NAME);
+        eprintln!(
+            "   Use `{} <conda-args>` to run conda commands.",
+            policy::COMMAND_NAME
+        );
     }
 
     Ok(())
@@ -248,7 +245,7 @@ pub(crate) fn status(prefix: &Path) -> miette::Result<()> {
     let meta = read_metadata(prefix)?;
 
     let bundle = crate::config::EMBEDDED_BUNDLE;
-    let binary_name = if bundle.is_empty() { "cx" } else { "cxz" };
+    let binary_name = policy::status_binary_name(bundle);
     println!("{} {}", binary_name, env!("CARGO_PKG_VERSION"));
     println!("  prefix:   {}", prefix.display());
     println!("  channels: {}", meta.channels.join(", "));
@@ -400,14 +397,15 @@ pub(crate) fn uninstall(prefix: &Path, yes: bool, verbosity: Verbosity) -> miett
 
     if let Some(ref bin) = cx_binary {
         let hint = match crate::config::INSTALL_METHOD {
-            Some("homebrew") => "   brew uninstall conda-express".to_string(),
-            Some("cargo") => "   cargo uninstall conda-express".to_string(),
+            Some("homebrew") => format!("   brew uninstall {}", policy::DISPLAY_NAME),
+            Some("cargo") => format!("   cargo uninstall {}", policy::DISPLAY_NAME),
             Some(method) => format!("   Installed via: {method}"),
             None => format!("   {}", bin.display()),
         };
         eprintln!(
-            "\n{} To complete removal, delete the cx binary:",
+            "\n{} To complete removal, delete the {} binary:",
             console::style("i").blue().bold(),
+            policy::COMMAND_NAME
         );
         eprintln!("{hint}");
     }
@@ -416,8 +414,9 @@ pub(crate) fn uninstall(prefix: &Path, yes: bool, verbosity: Verbosity) -> miett
 
     if verbosity != Verbosity::Quiet {
         eprintln!(
-            "\n{} cx has been uninstalled.",
-            console::style("✔").green().bold()
+            "\n{} {} has been uninstalled.",
+            console::style("✔").green().bold(),
+            policy::DISPLAY_NAME
         );
     }
 
@@ -488,14 +487,21 @@ pub(crate) fn clean_path_entries_from_profiles(
 
 pub(crate) fn print_disabled_shell_command(command: &str) {
     eprintln!(
-        "{} `conda {command}` is not available in cx.",
-        console::style("!").yellow().bold()
+        "{} `conda {command}` is not available in {}.",
+        console::style("!").yellow().bold(),
+        policy::DISPLAY_NAME
     );
     eprintln!();
-    eprintln!("  cx uses conda-spawn for environment activation.");
+    eprintln!(
+        "  {} uses conda-spawn for environment activation.",
+        policy::DISPLAY_NAME
+    );
     eprintln!("  Instead of `conda activate myenv`, run:");
     eprintln!();
-    eprintln!("    {}", console::style("cx shell myenv").green());
+    eprintln!(
+        "    {}",
+        console::style(format!("{} shell myenv", policy::COMMAND_NAME)).green()
+    );
     eprintln!();
     eprintln!("  To leave the environment, exit the subshell (Ctrl+D or `exit`).");
     eprintln!();
@@ -505,21 +511,32 @@ pub(crate) fn print_disabled_shell_command(command: &str) {
 
 pub(crate) fn print_disabled_init() {
     eprintln!(
-        "{} `conda init` is not needed with cx.",
-        console::style("!").yellow().bold()
+        "{} `conda init` is not needed with {}.",
+        console::style("!").yellow().bold(),
+        policy::DISPLAY_NAME
     );
     eprintln!();
-    eprintln!("  cx uses conda-spawn, which does not require shell");
+    eprintln!(
+        "  {} uses conda-spawn, which does not require shell",
+        policy::DISPLAY_NAME
+    );
     eprintln!("  profile modifications. Just add condabin to your PATH:");
     eprintln!();
     eprintln!(
         "    {}",
-        console::style("export PATH=\"$HOME/.cx/condabin:$PATH\"").green()
+        console::style(format!(
+            "export PATH=\"$HOME/{}/condabin:$PATH\"",
+            policy::DEFAULT_PREFIX_DIR
+        ))
+        .green()
     );
     eprintln!();
     eprintln!("  Then activate environments with:");
     eprintln!();
-    eprintln!("    {}", console::style("cx shell myenv").green());
+    eprintln!(
+        "    {}",
+        console::style(format!("{} shell myenv", policy::COMMAND_NAME)).green()
+    );
     eprintln!();
     eprintln!("  Learn more: https://github.com/conda-incubator/conda-spawn");
     std::process::exit(1);
@@ -546,11 +563,11 @@ mod tests {
 
     #[test]
     fn test_default_prefix_ends_with_cx() {
-        let prefix = default_prefix().unwrap();
+        let prefix = policy::default_prefix().unwrap();
         assert_eq!(
             prefix.file_name().unwrap().to_str().unwrap(),
-            ".cx",
-            "default prefix should be ~/.cx"
+            policy::DEFAULT_PREFIX_DIR,
+            "default prefix should use policy default"
         );
         assert!(
             prefix.parent().is_some(),

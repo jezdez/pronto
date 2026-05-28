@@ -42,13 +42,7 @@ fn test_embedded_lockfile_package_composition() {
         );
     }
 
-    let required = [
-        "conda",
-        "conda-rattler-solver",
-        "conda-spawn",
-        "conda-pypi",
-        "conda-self",
-    ];
+    let required = ["conda", "conda-rattler-solver", "conda-spawn"];
     for pkg in &required {
         assert!(
             names.contains(&pkg.to_string()),

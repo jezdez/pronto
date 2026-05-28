@@ -21,7 +21,7 @@ const AFTER_HELP: &str = "\x1b[1;4mQuick start:\x1b[0m
   Any command not listed above is passed through to conda:
   cx install, cx remove, cx list, cx env, cx info, cx config, ...
 
-\x1b[4mDocs:\x1b[0m https://jezdez.github.io/conda-express/";
+\x1b[4mDocs:\x1b[0m https://jezdez.github.io/pronto/";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Verbosity {
@@ -35,9 +35,9 @@ pub enum Verbosity {
     name = "cx",
     about = "Lightweight single-binary conda bootstrapper powered by rattler",
     disable_help_subcommand = true,
-    long_about = "cx (conda-express) is a lightweight, single-binary bootstrapper for conda.\n\n\
+    long_about = "cx is a lightweight, single-binary bootstrapper for conda.\n\n\
         It installs a minimal conda environment from an embedded lockfile in seconds,\n\
-        uses conda-rattler-solver instead of libmamba, and conda-spawn for activation.",
+        uses conda-rattler-solver for solves, and conda-spawn for activation.",
     version,
     after_help = AFTER_HELP,
     allow_external_subcommands = true,

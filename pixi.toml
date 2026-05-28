@@ -42,29 +42,22 @@ docs = { cmd = "sphinx-build -b dirhtml . _build/dirhtml", cwd = "docs" }
 docs-serve = { cmd = "python -m http.server", cwd = "docs/_build/dirhtml" }
 docs-clean = { cmd = "rm -rf _build", cwd = "docs" }
 
-[feature.cx-env.dependencies]
+[feature.runtime.dependencies]
 python = ">=3.12"
 conda = ">=25.1"
 conda-rattler-solver = "*"
 conda-spawn = ">=0.1.0"
-conda-pypi = "*"
-conda-self = "*"
-conda-workspaces = ">=0.4.0"
 
 [environments]
 docs = ["docs"]
-cx-env = { features = ["cx-env"], no-default-feature = true }
+runtime = { features = ["runtime"], no-default-feature = true }
 
-[tool.cx]
+[tool.pronto]
 channels = ["conda-forge"]
 packages = [
     "python >=3.12",
     "conda >=25.1",
     "conda-rattler-solver",
     "conda-spawn >=0.1.0",
-    "conda-pypi",
-    "conda-self",
-    "conda-global",
-    "conda-workspaces >=0.4.0",
 ]
 exclude = ["conda-libmamba-solver"]

@@ -227,7 +227,7 @@ pub async fn from_lockfile_offline(prefix: &Path, lock_content: &str) -> miette:
 ///
 /// Returns `Some(path)` when the binary was built with `PRONTO_EMBED_BUNDLE=1`
 /// and contains a non-empty `bundle.tar.zst`. Returns `None` for standard
-/// `cx` builds where the bundle is empty.
+/// builds where the bundle is empty.
 pub fn extract_embedded_bundle() -> miette::Result<Option<PathBuf>> {
     let bundle = config::EMBEDDED_BUNDLE;
     if bundle.is_empty() {
@@ -235,7 +235,7 @@ pub fn extract_embedded_bundle() -> miette::Result<Option<PathBuf>> {
     }
 
     let tmp_dir = tempfile::Builder::new()
-        .prefix("cxz-bundle-")
+        .prefix(&format!("{}-bundle-", crate::policy::EMBEDDED_COMMAND_NAME))
         .tempdir()
         .into_diagnostic()
         .context("failed to create temp dir for embedded bundle")?;

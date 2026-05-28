@@ -34,7 +34,7 @@ inputs:
   embed-bundle:
     description: >
       Embed package archives into the binary for offline bootstrap
-      (increases size by 40-85 MB depending on platform). The output binary is named cxz instead of cx.
+      (increases size by 40-85 MB depending on platform). The output binary uses the z-suffixed artifact name.
     required: false
     default: "false"
 

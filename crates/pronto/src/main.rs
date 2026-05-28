@@ -15,11 +15,11 @@ struct PixiToml {
 
 #[derive(serde::Deserialize)]
 struct ToolSection {
-    cx: CxConfig,
+    pronto: ProntoConfig,
 }
 
 #[derive(serde::Deserialize)]
-struct CxConfig {
+struct ProntoConfig {
     #[serde(default)]
     exclude: Vec<String>,
 }
@@ -33,7 +33,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Extract artifact.lock from pixi.lock's cx-env environment and apply exclude filters
+    /// Extract artifact.lock from pixi.lock's runtime environment and apply exclude filters
     Lock {
         /// Only verify artifact.lock is up-to-date; exit 1 if stale
         #[arg(long)]
@@ -128,9 +128,9 @@ enum Command {
         root: Option<PathBuf>,
     },
 
-    /// Override cx-env packages/channels/exclude in pixi.toml for custom builds
+    /// Override runtime packages/channels/exclude in pixi.toml for custom builds
     Configure {
-        /// Comma-separated conda package specs (replaces [feature.cx-env.dependencies])
+        /// Comma-separated conda package specs (replaces [feature.runtime.dependencies])
         #[arg(long)]
         packages: Option<String>,
 
@@ -138,7 +138,7 @@ enum Command {
         #[arg(long)]
         channels: Option<String>,
 
-        /// Comma-separated packages to exclude at runtime (replaces [tool.cx].exclude)
+        /// Comma-separated packages to exclude at runtime (replaces [tool.pronto].exclude)
         #[arg(long)]
         exclude: Option<String>,
 
@@ -226,28 +226,28 @@ fn write_artifact_lock(check: bool, root_override: Option<PathBuf>) {
     }
 
     let config: PixiToml =
-        toml::from_str(&pixi_toml).expect("failed to parse [tool.cx] from pixi.toml");
-    let excludes = &config.tool.cx.exclude;
+        toml::from_str(&pixi_toml).expect("failed to parse [tool.pronto] from pixi.toml");
+    let excludes = &config.tool.pronto.exclude;
 
     let pixi_lock = parse_pixi_lock(&pixi_lock_content, &pixi_lock_path);
 
-    let cx_env = pixi_lock.environment("cx-env").unwrap_or_else(|| {
+    let runtime_env = pixi_lock.environment("runtime").unwrap_or_else(|| {
         panic!(
-            "cx-env environment not found in {}",
+            "runtime environment not found in {}",
             pixi_lock_path.display()
         )
     });
 
     let mut builder = LockFileBuilder::new();
 
-    if !cx_env.channels().is_empty() {
-        builder.set_channels("default", cx_env.channels().iter().cloned());
+    if !runtime_env.channels().is_empty() {
+        builder.set_channels("default", runtime_env.channels().iter().cloned());
     }
 
     let mut total_packages = 0usize;
     let mut total_excluded = 0usize;
 
-    for (platform, packages) in cx_env.conda_packages_by_platform() {
+    for (platform, packages) in runtime_env.conda_packages_by_platform() {
         let pkgs: Vec<_> = packages.cloned().collect();
 
         let filtered = if excludes.is_empty() {
@@ -281,7 +281,7 @@ fn write_artifact_lock(check: bool, root_override: Option<PathBuf>) {
     std::fs::write(&artifact_hash_path, &input_hash)
         .unwrap_or_else(|e| panic!("failed to write {}: {e}", artifact_hash_path.display()));
 
-    let platforms: Vec<Platform> = cx_env.platforms().collect();
+    let platforms: Vec<Platform> = runtime_env.platforms().collect();
     eprintln!(
         "wrote artifact.lock: {} packages across {} platforms (excluded {})",
         total_packages,
@@ -1055,14 +1055,14 @@ fn configure(
             };
             deps[name] = toml_edit::value(version);
         }
-        doc["feature"]["cx-env"]["dependencies"] = toml_edit::Item::Table(deps);
+        doc["feature"]["runtime"]["dependencies"] = toml_edit::Item::Table(deps);
         eprintln!("configured {} custom packages", specs.len());
 
         let mut tool_packages = toml_edit::Array::new();
         for spec in &specs {
             tool_packages.push(spec.to_string());
         }
-        doc["tool"]["cx"]["packages"] = toml_edit::value(tool_packages);
+        doc["tool"]["pronto"]["packages"] = toml_edit::value(tool_packages);
     }
 
     if let Some(ref ch) = channels {
@@ -1081,7 +1081,7 @@ fn configure(
         for c in &channel_list {
             tool_channels.push(c.to_string());
         }
-        doc["tool"]["cx"]["channels"] = toml_edit::value(tool_channels);
+        doc["tool"]["pronto"]["channels"] = toml_edit::value(tool_channels);
         eprintln!("configured channels: {}", channel_list.join(", "));
     }
 
@@ -1095,7 +1095,7 @@ fn configure(
         for e in &excludes {
             arr.push(e.to_string());
         }
-        doc["tool"]["cx"]["exclude"] = toml_edit::value(arr);
+        doc["tool"]["pronto"]["exclude"] = toml_edit::value(arr);
         eprintln!("configured excludes: {}", excludes.join(", "));
     }
 

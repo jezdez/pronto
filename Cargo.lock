@@ -551,43 +551,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "conda-express"
-version = "0.6.0"
-dependencies = [
- "assert_cmd",
- "assert_matches",
- "clap",
- "console",
- "dirs",
- "futures",
- "indicatif",
- "insta",
- "miette",
- "predicates",
- "rattler",
- "rattler_cache",
- "rattler_conda_types",
- "rattler_lock",
- "rattler_networking",
- "rattler_repodata_gateway",
- "rattler_solve",
- "rattler_virtual_packages",
- "reqwest",
- "reqwest-middleware",
- "rstest",
- "serde",
- "serde_json",
- "tar",
- "temp-env",
- "tempfile",
- "tokio",
- "toml",
- "tracing",
- "tracing-subscriber",
- "zstd",
-]
-
-[[package]]
 name = "configparser"
 version = "3.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2399,6 +2362,43 @@ dependencies = [
  "tokio",
  "toml",
  "toml_edit",
+ "zstd",
+]
+
+[[package]]
+name = "pronto-runtime"
+version = "0.6.0"
+dependencies = [
+ "assert_cmd",
+ "assert_matches",
+ "clap",
+ "console",
+ "dirs",
+ "futures",
+ "indicatif",
+ "insta",
+ "miette",
+ "predicates",
+ "rattler",
+ "rattler_cache",
+ "rattler_conda_types",
+ "rattler_lock",
+ "rattler_networking",
+ "rattler_repodata_gateway",
+ "rattler_solve",
+ "rattler_virtual_packages",
+ "reqwest",
+ "reqwest-middleware",
+ "rstest",
+ "serde",
+ "serde_json",
+ "tar",
+ "temp-env",
+ "tempfile",
+ "tokio",
+ "toml",
+ "tracing",
+ "tracing-subscriber",
  "zstd",
 ]
 
