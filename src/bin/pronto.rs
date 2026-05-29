@@ -1,12 +1,10 @@
-use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
 
 use clap::{Parser, Subcommand, ValueEnum};
-use rattler_conda_types::{PackageName, Platform};
-use rattler_lock::{CondaPackageData, LockFile, LockFileBuilder};
+use rattler_conda_types::{MatchSpec, PackageName, PackageRecord, ParseMatchSpecOptions, Platform};
+use rattler_lock::{CondaPackageData, LockFile, LockFileBuilder, PlatformData};
 use sha2::{Digest, Sha256};
 
 #[path = "../runtime_data.rs"]
@@ -91,6 +89,14 @@ enum Command {
         #[arg(long)]
         target: Option<String>,
 
+        /// Prebuilt generic runtime template binary to stamp
+        #[arg(long)]
+        template: Option<PathBuf>,
+
+        /// Documentation URL stamped into the generated runtime
+        #[arg(long)]
+        docs_url: Option<String>,
+
         /// Output directory for staged artifacts
         #[arg(long, default_value = "dist")]
         out_dir: PathBuf,
@@ -118,6 +124,14 @@ enum Command {
         #[arg(long, default_value = "dist")]
         out_dir: PathBuf,
 
+        /// Prebuilt generic runtime template binary to stamp
+        #[arg(long)]
+        template: Option<PathBuf>,
+
+        /// Documentation URL stamped into the generated runtime
+        #[arg(long)]
+        docs_url: Option<String>,
+
         /// Project root (default: auto-detect from current directory)
         #[arg(long)]
         root: Option<PathBuf>,
@@ -144,17 +158,17 @@ enum Command {
 
     /// Override runtime packages, channels, or excludes in the project manifest
     Configure {
-        /// Comma-separated conda package specs (replaces [feature.runtime.dependencies])
-        #[arg(long)]
-        packages: Option<String>,
+        /// Conda package matchspec to include; repeat for multiple packages
+        #[arg(long = "package")]
+        packages: Vec<String>,
 
-        /// Comma-separated conda channels (replaces `[workspace].channels`)
-        #[arg(long)]
-        channels: Option<String>,
+        /// Conda channel name or URL to use; repeat for multiple channels
+        #[arg(long = "channel")]
+        channels: Vec<String>,
 
-        /// Comma-separated packages to exclude at runtime (replaces [tool.pronto].exclude)
-        #[arg(long)]
-        exclude: Option<String>,
+        /// Package name to exclude at runtime; repeat for multiple packages
+        #[arg(long = "exclude")]
+        exclude: Vec<String>,
 
         /// Project root (default: auto-detect from current directory)
         #[arg(long)]
@@ -272,8 +286,21 @@ fn derive_runtime_lock(root: &Path) -> DerivedRuntimeLock {
         })
     };
 
-    let mut builder = LockFileBuilder::new();
-    let platforms: Vec<Platform> = runtime_env.platforms().collect();
+    let platform_data: Vec<_> = runtime_env
+        .platforms()
+        .map(|platform| PlatformData {
+            name: platform.name().clone(),
+            subdir: platform.subdir(),
+            virtual_packages: platform.virtual_packages().to_vec(),
+        })
+        .collect();
+    let platforms: Vec<Platform> = platform_data
+        .iter()
+        .map(|platform| platform.subdir)
+        .collect();
+    let mut builder = LockFileBuilder::new()
+        .with_platforms(platform_data)
+        .expect("failed to initialize runtime lock platforms");
     let mut runtime_config = input.config.clone();
 
     if !runtime_env.channels().is_empty() {
@@ -300,7 +327,8 @@ fn derive_runtime_lock(root: &Path) -> DerivedRuntimeLock {
             let (kept, removed) = filter_excluded(&pkgs, &input.config.exclude);
             if !removed.is_empty() {
                 eprintln!(
-                    "  {platform}: excluded {} packages ({})",
+                    "  {}: excluded {} packages ({})",
+                    platform.name(),
                     removed.len(),
                     removed.join(", ")
                 );
@@ -311,8 +339,10 @@ fn derive_runtime_lock(root: &Path) -> DerivedRuntimeLock {
 
         total_packages += filtered.len();
         for pkg in filtered {
-            resolved_package_names.insert(pkg.record().name.as_normalized().to_string());
-            builder.add_conda_package("default", platform, pkg);
+            resolved_package_names.insert(package_record(&pkg).name.as_normalized().to_string());
+            builder
+                .add_conda_package("default", platform.name().as_str(), pkg)
+                .expect("failed to add package to runtime lock");
         }
     }
     if runtime_config.packages.is_empty() {
@@ -389,28 +419,14 @@ fn write_generated_runtime_lock(path: &Path, content: &str) {
 }
 
 fn parse_lock(lock_content: &str, lock_path: &Path) -> LockFile {
-    let lock_content = normalize_lock_schema_version(lock_content);
-
-    LockFile::from_str(lock_content.as_ref())
+    LockFile::from_str_with_base_directory(lock_content, lock_path.parent())
         .unwrap_or_else(|e| panic!("failed to parse {}: {e}", lock_path.display()))
 }
 
-fn normalize_lock_schema_version(lock_content: &str) -> Cow<'_, str> {
-    if let Some(rest) = lock_content.strip_prefix("version: 7\r\n") {
-        // Pixi lock v7 is backwards-compatible with rattler_lock's v6 parser
-        // for the conda package data `pronto lock` consumes.
-        Cow::Owned(format!("version: 6\r\n{rest}"))
-    } else if let Some(rest) = lock_content.strip_prefix("version: 7\n") {
-        Cow::Owned(format!("version: 6\n{rest}"))
-    } else if let Some(rest) = lock_content.strip_prefix("version: 1\r\n") {
-        // conda-workspaces writes the rattler-lock schema with a conda-facing
-        // on-disk version. The conda package records are compatible here.
-        Cow::Owned(format!("version: 6\r\n{rest}"))
-    } else if let Some(rest) = lock_content.strip_prefix("version: 1\n") {
-        Cow::Owned(format!("version: 6\n{rest}"))
-    } else {
-        Cow::Borrowed(lock_content)
-    }
+fn package_record(package: &CondaPackageData) -> &PackageRecord {
+    package
+        .record()
+        .expect("conda package in lockfile has no package record")
 }
 
 /// Remove explicitly excluded packages and any transitive dependencies that
@@ -423,7 +439,7 @@ fn filter_excluded(
 
     let pkg_names: Vec<String> = packages
         .iter()
-        .map(|p| p.record().name.as_normalized().to_string())
+        .map(|p| package_record(p).name.as_normalized().to_string())
         .collect();
     let name_to_idx: HashMap<&str, usize> = pkg_names
         .iter()
@@ -434,7 +450,7 @@ fn filter_excluded(
     let n = packages.len();
     let mut reverse_deps: Vec<HashSet<usize>> = vec![HashSet::new(); n];
     for (i, pkg) in packages.iter().enumerate() {
-        for dep_str in &pkg.record().depends {
+        for dep_str in &package_record(pkg).depends {
             let dep_name = PackageName::from_matchspec_str_unchecked(dep_str);
             if let Some(&dep_idx) = name_to_idx.get(dep_name.as_normalized()) {
                 reverse_deps[dep_idx].insert(i);
@@ -452,7 +468,7 @@ fn filter_excluded(
     }
 
     while let Some(pkg_idx) = queue.pop() {
-        for dep_str in &packages[pkg_idx].record().depends {
+        for dep_str in &package_record(&packages[pkg_idx]).depends {
             let dep_name = PackageName::from_matchspec_str_unchecked(dep_str);
             if let Some(&dep_idx) = name_to_idx.get(dep_name.as_normalized()) {
                 if removed.contains(&dep_idx) {
@@ -510,7 +526,7 @@ fn gen_bundle_from_lock(
 
     let packages: Vec<_> = env
         .conda_packages_by_platform()
-        .filter(|(p, _)| *p == platform)
+        .filter(|(p, _)| p.subdir() == platform)
         .flat_map(|(_, pkgs)| pkgs)
         .collect();
 
@@ -558,11 +574,14 @@ async fn download_and_bundle(
             let archive_name = url
                 .path_segments()
                 .and_then(|mut s| s.next_back())
-                .unwrap_or("unknown");
+                .ok_or_else(|| format!("package URL has no archive name: {url}"))?;
+            validate_package_archive_name(archive_name)
+                .map_err(|e| format!("invalid package archive name from {url}: {e}"))?;
 
             let dest = bundle_dir.join(archive_name);
             let expected = pkg
                 .record()
+                .expect("conda package in runtime lock has no package record")
                 .sha256
                 .as_ref()
                 .ok_or_else(|| format!("{archive_name} has no SHA256 in the runtime lock"))?;
@@ -700,20 +719,32 @@ struct PackageInfo {
     sha256: Option<String>,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_artifact(
     layout: BundleLayout,
     name: String,
     target_label: Option<String>,
     platform_str: Option<String>,
     target: Option<String>,
+    template: Option<PathBuf>,
+    docs_url: Option<String>,
     out_dir: PathBuf,
     root_override: Option<PathBuf>,
 ) -> BuildOutput {
     validate_artifact_name(&name);
+    if let Some(label) = target_label.as_deref() {
+        validate_target_label(label);
+    }
+    if let Some(target) = target.as_deref() {
+        validate_target_triple(target);
+    }
     let root = project_root(root_override.as_deref());
     let platform = parse_platform(platform_str);
 
-    let derived = derive_runtime_lock(&root);
+    let mut derived = derive_runtime_lock(&root);
+    if let Some(docs_url) = docs_url {
+        derived.runtime_config.docs_url = Some(docs_url);
+    }
     let runtime_lock_path = generated_runtime_lock_path(&root);
     write_generated_runtime_lock(&runtime_lock_path, &derived.content);
 
@@ -726,9 +757,17 @@ fn build_artifact(
         )
     });
 
-    run_cargo_build(&root, target.as_deref());
+    let source_binary = match template {
+        Some(path) => resolve_runtime_template(&path),
+        None => {
+            run_cargo_build(&root, target.as_deref());
+            source_binary_path(&root, target.as_deref())
+        }
+    };
+
     stage_artifacts(
         &root,
+        &source_binary,
         layout,
         &name,
         target_label.as_deref(),
@@ -740,11 +779,14 @@ fn build_artifact(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_artifact(
     layout: BundleLayout,
     name: String,
     platform: Option<String>,
     out_dir: PathBuf,
+    template: Option<PathBuf>,
+    docs_url: Option<String>,
     root_override: Option<PathBuf>,
     args: Vec<OsString>,
 ) {
@@ -756,6 +798,8 @@ fn run_artifact(
         None,
         platform,
         None,
+        template,
+        docs_url,
         out_dir,
         Some(root.clone()),
     );
@@ -832,6 +876,7 @@ fn run_cargo_build(root: &Path, target: Option<&str>) {
 #[allow(clippy::too_many_arguments)]
 fn stage_artifacts(
     root: &Path,
+    source_binary: &Path,
     layout: BundleLayout,
     name: &str,
     target_label: Option<&str>,
@@ -847,9 +892,8 @@ fn stage_artifacts(
 
     let stem = artifact_stem(name, layout, target_label);
     let binary_name = binary_filename(&stem, target);
-    let source_binary = source_binary_path(root, target);
     let binary = out_dir.join(binary_name);
-    std::fs::copy(&source_binary, &binary).unwrap_or_else(|e| {
+    std::fs::copy(source_binary, &binary).unwrap_or_else(|e| {
         panic!(
             "failed to copy {} to {}: {e}",
             source_binary.display(),
@@ -982,6 +1026,22 @@ fn generated_bundle_path(root: &Path) -> PathBuf {
     root.join(PRONTO_STATE_DIR).join(BUNDLE_ARCHIVE_FILE)
 }
 
+fn validate_package_archive_name(name: &str) -> Result<(), &'static str> {
+    if name.is_empty() {
+        return Err("archive name must not be empty");
+    }
+    if name == "." || name == ".." {
+        return Err("archive name must not be . or ..");
+    }
+    if name.contains('/') || name.contains('\\') || name.chars().any(char::is_control) {
+        return Err("archive name must be a plain filename");
+    }
+    if !(name.ends_with(".conda") || name.ends_with(".tar.bz2")) {
+        return Err("archive name must end with .conda or .tar.bz2");
+    }
+    Ok(())
+}
+
 fn parse_platform(platform_str: Option<String>) -> Platform {
     if let Some(ref platform) = platform_str {
         platform
@@ -993,15 +1053,32 @@ fn parse_platform(platform_str: Option<String>) -> Platform {
 }
 
 fn validate_artifact_name(name: &str) {
-    assert!(!name.is_empty(), "artifact name must not be empty");
+    validate_artifact_component("artifact name", name);
+}
+
+fn validate_target_label(label: &str) {
+    validate_artifact_component("target label", label);
+}
+
+fn validate_target_triple(target: &str) {
+    validate_artifact_component("target triple", target);
+}
+
+fn validate_artifact_component(kind: &str, value: &str) {
+    assert!(!value.is_empty(), "{kind} must not be empty");
+    assert!(value != "." && value != "..", "{kind} must not be . or ..");
     assert!(
-        !name.contains('/') && !name.contains('\\'),
-        "artifact name must not contain path separators"
+        value
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_alphanumeric()),
+        "{kind} must start with an ASCII letter or digit"
     );
     assert!(
-        name.chars()
+        value
+            .chars()
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-')),
-        "artifact name may only contain ASCII letters, digits, dots, dashes, and underscores"
+        "{kind} may only contain ASCII letters, digits, dots, dashes, and underscores"
     );
 }
 
@@ -1039,6 +1116,22 @@ fn source_binary_path(root: &Path, target: Option<&str>) -> PathBuf {
         "pronto-runtime"
     });
     path
+}
+
+fn resolve_runtime_template(path: &Path) -> PathBuf {
+    let template = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .expect("failed to read current directory")
+            .join(path)
+    };
+    assert!(
+        template.is_file(),
+        "runtime template not found at {}",
+        template.display()
+    );
+    template
 }
 
 fn stamp_runtime_data(
@@ -1122,7 +1215,7 @@ fn platform_summaries(lock_file: &LockFile, runtime_lock_path: &Path) -> Vec<Pla
     let mut summaries: Vec<_> = env
         .conda_packages_by_platform()
         .map(|(platform, packages)| PlatformSummary {
-            platform: platform.to_string(),
+            platform: platform.name().to_string(),
             packages: packages.count(),
         })
         .collect();
@@ -1141,7 +1234,7 @@ fn packages_for_platform<'a>(
 
     let packages: Vec<_> = env
         .conda_packages_by_platform()
-        .filter(|(p, _)| *p == platform)
+        .filter(|(p, _)| p.subdir() == platform)
         .flat_map(|(_, pkgs)| pkgs)
         .collect();
 
@@ -1159,7 +1252,7 @@ fn package_infos(packages: &[&CondaPackageData]) -> Vec<PackageInfo> {
     let mut infos: Vec<_> = packages
         .iter()
         .map(|pkg| {
-            let record = pkg.record();
+            let record = package_record(pkg);
             PackageInfo {
                 name: record.name.as_normalized().to_string(),
                 version: record.version.to_string(),
@@ -1226,9 +1319,9 @@ fn file_name(path: &Path) -> String {
 }
 
 fn configure(
-    packages: Option<String>,
-    channels: Option<String>,
-    exclude: Option<String>,
+    packages: Vec<String>,
+    channels: Vec<String>,
+    exclude: Vec<String>,
     root_override: Option<PathBuf>,
 ) {
     let root = project_root(root_override.as_deref());
@@ -1240,66 +1333,73 @@ fn configure(
         .parse()
         .unwrap_or_else(|e| panic!("failed to parse {}: {e}", manifest_path.display()));
 
-    if let Some(ref pkgs) = packages {
-        let specs: Vec<&str> = pkgs
-            .split(',')
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty())
-            .collect();
+    if !packages.is_empty() {
         let mut deps = toml_edit::Table::new();
-        for spec in &specs {
-            let (name, version) = match spec.split_once(' ') {
-                Some((n, v)) => (n.trim(), v.trim().to_string()),
-                None => (spec.trim(), "*".to_string()),
-            };
-            deps[name] = toml_edit::value(version);
+        for spec in &packages {
+            let (name, version) = pixi_dependency_from_matchspec(spec);
+            deps[&name] = toml_edit::value(version);
         }
         doc["feature"]["runtime"]["dependencies"] = toml_edit::Item::Table(deps);
-        eprintln!("configured {} custom packages", specs.len());
+        eprintln!("configured {} custom packages", packages.len());
 
         let mut tool_packages = toml_edit::Array::new();
-        for spec in &specs {
+        for spec in &packages {
             tool_packages.push(spec.to_string());
         }
         doc["tool"]["pronto"]["packages"] = toml_edit::value(tool_packages);
     }
 
-    if let Some(ref ch) = channels {
-        let channel_list: Vec<&str> = ch
-            .split(',')
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty())
-            .collect();
+    if !channels.is_empty() {
         let mut arr = toml_edit::Array::new();
-        for c in &channel_list {
+        for c in &channels {
             arr.push(c.to_string());
         }
         doc["workspace"]["channels"] = toml_edit::value(arr);
 
         let mut tool_channels = toml_edit::Array::new();
-        for c in &channel_list {
+        for c in &channels {
             tool_channels.push(c.to_string());
         }
         doc["tool"]["pronto"]["channels"] = toml_edit::value(tool_channels);
-        eprintln!("configured channels: {}", channel_list.join(", "));
+        eprintln!("configured channels: {}", channels.join(", "));
     }
 
-    if let Some(ref ex) = exclude {
-        let excludes: Vec<&str> = ex
-            .split(',')
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty())
-            .collect();
+    if !exclude.is_empty() {
         let mut arr = toml_edit::Array::new();
-        for e in &excludes {
+        for e in &exclude {
             arr.push(e.to_string());
         }
         doc["tool"]["pronto"]["exclude"] = toml_edit::value(arr);
-        eprintln!("configured excludes: {}", excludes.join(", "));
+        eprintln!("configured excludes: {}", exclude.join(", "));
     }
 
     std::fs::write(&manifest_path, doc.to_string())
         .unwrap_or_else(|e| panic!("failed to write {}: {e}", manifest_path.display()));
+}
+
+fn pixi_dependency_from_matchspec(spec: &str) -> (String, String) {
+    let parsed = MatchSpec::from_str(spec, ParseMatchSpecOptions::default())
+        .unwrap_or_else(|e| panic!("failed to parse package matchspec {spec:?}: {e}"));
+    assert!(
+        parsed.build.is_none()
+            && parsed.build_number.is_none()
+            && parsed.file_name.is_none()
+            && parsed.extras.is_none()
+            && parsed.flags.is_none()
+            && parsed.channel.is_none()
+            && parsed.subdir.is_none()
+            && parsed.namespace.is_none()
+            && parsed.md5.is_none()
+            && parsed.sha256.is_none()
+            && parsed.url.is_none()
+            && parsed.license.is_none(),
+        "package matchspec {spec:?} cannot be represented in Pixi dependency syntax; use a project manifest and lockfile instead"
+    );
+    let version = parsed
+        .version
+        .map(|version| version.to_string())
+        .unwrap_or_else(|| "*".to_string());
+    (parsed.name.to_string(), version)
 }
 
 fn main() {
@@ -1313,11 +1413,22 @@ fn main() {
             target_label,
             platform,
             target,
+            template,
+            docs_url,
             out_dir,
             root,
         } => {
-            let output =
-                build_artifact(layout, name, target_label, platform, target, out_dir, root);
+            let output = build_artifact(
+                layout,
+                name,
+                target_label,
+                platform,
+                target,
+                template,
+                docs_url,
+                out_dir,
+                root,
+            );
             eprintln!("metadata {}", output.info.display());
             eprintln!("checksums {}", output.checksums.display());
             eprintln!("lock {}", output.lock.display());
@@ -1331,9 +1442,13 @@ fn main() {
             name,
             platform,
             out_dir,
+            template,
+            docs_url,
             root,
             args,
-        } => run_artifact(layout, name, platform, out_dir, root, args),
+        } => run_artifact(
+            layout, name, platform, out_dir, template, docs_url, root, args,
+        ),
         Command::Inspect {
             platform,
             json,
@@ -1374,42 +1489,6 @@ mod tests {
                 .unwrap(),
             channel: Some("test".to_string()),
         })
-    }
-
-    #[test]
-    fn test_normalize_pixi_lock_v7_lf_header() {
-        let lock = "version: 7\nplatforms: []\n";
-        assert_eq!(
-            normalize_lock_schema_version(lock).as_ref(),
-            "version: 6\nplatforms: []\n"
-        );
-    }
-
-    #[test]
-    fn test_normalize_pixi_lock_v7_crlf_header() {
-        let lock = "version: 7\r\nplatforms: []\r\n";
-        assert_eq!(
-            normalize_lock_schema_version(lock).as_ref(),
-            "version: 6\r\nplatforms: []\r\n"
-        );
-    }
-
-    #[test]
-    fn test_normalize_conda_lock_v1_crlf_header() {
-        let lock = "version: 1\r\nplatforms: []\r\n";
-        assert_eq!(
-            normalize_lock_schema_version(lock).as_ref(),
-            "version: 6\r\nplatforms: []\r\n"
-        );
-    }
-
-    #[test]
-    fn test_normalize_leaves_supported_header_unchanged() {
-        let lock = "version: 6\nplatforms: []\n";
-        assert!(matches!(
-            normalize_lock_schema_version(lock),
-            std::borrow::Cow::Borrowed(_)
-        ));
     }
 
     #[test]
@@ -1510,6 +1589,55 @@ mod tests {
     }
 
     #[test]
+    fn test_artifact_name_allows_filename_safe_components() {
+        validate_artifact_name("conda-pronto_1.0");
+    }
+
+    #[test]
+    #[should_panic(expected = "artifact name must not be . or ..")]
+    fn test_artifact_name_rejects_dot_component() {
+        validate_artifact_name(".");
+    }
+
+    #[test]
+    #[should_panic(expected = "artifact name must start with an ASCII letter or digit")]
+    fn test_artifact_name_rejects_leading_dash() {
+        validate_artifact_name("-demo");
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "artifact name may only contain ASCII letters, digits, dots, dashes, and underscores"
+    )]
+    fn test_artifact_name_rejects_path_separator() {
+        validate_artifact_name("demo/tool");
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "artifact name may only contain ASCII letters, digits, dots, dashes, and underscores"
+    )]
+    fn test_artifact_name_rejects_newline() {
+        validate_artifact_name("demo\ntool");
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "target label may only contain ASCII letters, digits, dots, dashes, and underscores"
+    )]
+    fn test_target_label_rejects_path_separator() {
+        validate_target_label("linux/64");
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "target triple may only contain ASCII letters, digits, dots, dashes, and underscores"
+    )]
+    fn test_target_triple_rejects_path_like_value() {
+        validate_target_triple("custom/target.json");
+    }
+
+    #[test]
     fn test_binary_filename_uses_windows_extension_for_target() {
         assert_eq!(
             binary_filename("demo", Some("x86_64-pc-windows-msvc")),
@@ -1518,8 +1646,41 @@ mod tests {
     }
 
     #[test]
+    fn test_package_archive_name_accepts_conda_archives() {
+        assert!(validate_package_archive_name("python-3.12-h123_0.conda").is_ok());
+        assert!(validate_package_archive_name("python-3.12-h123_0.tar.bz2").is_ok());
+    }
+
+    #[test]
+    fn test_package_archive_name_rejects_path_components() {
+        assert!(validate_package_archive_name("../python-3.12-h123_0.conda").is_err());
+        assert!(validate_package_archive_name("nested/python-3.12-h123_0.conda").is_err());
+    }
+
+    #[test]
+    fn test_package_archive_name_rejects_non_package_suffix() {
+        assert!(validate_package_archive_name("python-3.12-h123_0.zip").is_err());
+    }
+
+    #[test]
     fn test_runtime_env_var_sanitizes_artifact_name() {
         assert_eq!(runtime_env_var("demo-tool", "BUNDLE"), "DEMO_TOOL_BUNDLE");
+    }
+
+    #[test]
+    fn test_pixi_dependency_from_matchspec_preserves_comma_version() {
+        assert_eq!(
+            pixi_dependency_from_matchspec("python >=3.12,<3.15"),
+            ("python".to_string(), ">=3.12,<3.15".to_string())
+        );
+    }
+
+    #[test]
+    fn test_pixi_dependency_from_matchspec_defaults_to_wildcard() {
+        assert_eq!(
+            pixi_dependency_from_matchspec("conda-spawn"),
+            ("conda-spawn".to_string(), "*".to_string())
+        );
     }
 
     #[test]

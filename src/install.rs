@@ -6,7 +6,6 @@ use std::{
     env,
     future::IntoFuture,
     path::{Path, PathBuf},
-    str::FromStr,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -42,7 +41,7 @@ pub(crate) fn multi_progress() -> MultiProgress {
 
 /// Parse a lockfile and return the platform and records.
 fn lockfile_records(lock_content: &str) -> miette::Result<(Platform, Vec<RepoDataRecord>)> {
-    let lock_file = LockFile::from_str(lock_content)
+    let lock_file = LockFile::from_str_with_base_directory(lock_content, None)
         .into_diagnostic()
         .context("failed to parse lockfile")?;
 
@@ -51,8 +50,12 @@ fn lockfile_records(lock_content: &str) -> miette::Result<(Platform, Vec<RepoDat
         .ok_or_else(|| miette::miette!("lockfile has no default environment"))?;
 
     let platform = Platform::current();
+    let lock_platform = env
+        .platforms()
+        .find(|locked_platform| locked_platform.subdir() == platform)
+        .ok_or_else(|| miette::miette!("lockfile has no records for platform {}", platform))?;
     let records = env
-        .conda_repodata_records(platform)
+        .conda_repodata_records(lock_platform)
         .into_diagnostic()
         .context("failed to extract records from lockfile")?
         .ok_or_else(|| miette::miette!("lockfile has no records for platform {}", platform))?;
@@ -277,6 +280,12 @@ pub fn extract_embedded_bundle() -> miette::Result<Option<PathBuf>> {
         if entry_type.is_symlink() || entry_type.is_hard_link() {
             continue;
         }
+        if !(entry_type.is_file() || entry_type.is_dir()) {
+            return Err(miette::miette!(
+                "unsupported entry type in embedded bundle: {}",
+                path_str
+            ));
+        }
         entry
             .unpack_in(tmp_dir.path())
             .into_diagnostic()
@@ -449,13 +458,14 @@ pub async fn from_solve(
     })
     .into_diagnostic()?;
 
-    let locked_packages = installed
+    let locked_package_records: Vec<_> = installed
         .iter()
         .map(|r| r.repodata_record.clone())
         .collect();
 
     let specs_clone = match_specs.clone();
     let solved = tokio::task::spawn_blocking(move || {
+        let locked_packages = locked_package_records.iter().collect();
         let solver_task = SolverTask {
             locked_packages,
             virtual_packages,

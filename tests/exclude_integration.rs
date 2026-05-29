@@ -2,7 +2,6 @@
 #![cfg(feature = "runtime-template")]
 
 use std::path::PathBuf;
-use std::str::FromStr;
 
 use rattler_conda_types::{Platform, RepoDataRecord};
 use rattler_lock::LockFile;
@@ -18,13 +17,17 @@ fn records_from_embedded_lock() -> Vec<RepoDataRecord> {
             lock_path.display()
         )
     });
-    let lock_file =
-        LockFile::from_str(&lock_content).expect("failed to parse generated runtime lock");
+    let lock_file = LockFile::from_str_with_base_directory(&lock_content, lock_path.parent())
+        .expect("failed to parse generated runtime lock");
     let env = lock_file
         .default_environment()
         .expect("no default environment");
     let platform = Platform::current();
-    env.conda_repodata_records(platform)
+    let lock_platform = env
+        .platforms()
+        .find(|locked_platform| locked_platform.subdir() == platform)
+        .unwrap_or_else(|| panic!("no records for current platform {platform}"));
+    env.conda_repodata_records(lock_platform)
         .expect("failed to extract records")
         .expect("no records for current platform")
 }

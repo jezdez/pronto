@@ -1,8 +1,8 @@
 name: "Build conda bootstrap binary"
 description: >
-  Build a custom conda bootstrap binary with your choice of conda packages
-  baked in. Runs on the current runner — use a matrix strategy for
-  multi-platform builds.
+  Build a custom conda bootstrap binary from a committed project lockfile using
+  released conda-pronto artifacts. Runs on the current runner; use a matrix
+  strategy for multi-platform builds.
 branding:
   icon: package
   color: green
@@ -11,35 +11,14 @@ inputs:
   name:
     description: "Distribution binary name to build."
     required: true
-  packages:
-    description: >
-      Comma-separated conda package specs to include in the bootstrapper.
-      Example: "python >=3.12, conda >=25.1, numpy, pandas".
-      When empty, uses the default packages from this conda-pronto configuration.
+  root:
+    description: "Project root containing conda.toml/conda.lock or pixi.toml/pixi.lock."
     required: false
-    default: ""
-  channels:
-    description: >
-      Comma-separated conda channels.
-      When empty, uses the default (conda-forge).
+    default: "."
+  layout:
+    description: "Artifact layout to build: none or embedded."
     required: false
-    default: ""
-  exclude:
-    description: >
-      Comma-separated packages to exclude (along with their exclusive
-      dependencies). When empty, uses the default exclusions.
-    required: false
-    default: ""
-  ref:
-    description: "Git ref of conda-pronto to build from (tag, branch, or SHA)."
-    required: false
-    default: "main"
-  embed-bundle:
-    description: >
-      Embed package archives into the binary for offline bootstrap
-      (increases size by 40-85 MB depending on platform). The output binary uses the z-suffixed artifact name.
-    required: false
-    default: "false"
+    default: "none"
   docs-url:
     description: "Documentation URL embedded in the runtime help output."
     required: false
@@ -68,89 +47,223 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: Checkout conda-pronto
-      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      with:
-        repository: jezdez/conda-pronto
-        ref: ${{ inputs.ref }}
-        path: .conda-pronto
-        persist-credentials: false
-
-    - name: Setup pixi
-      uses: prefix-dev/setup-pixi@1b2de7f3351f171c8b4dfeb558c639cb58ed4ec0 # v0.9.5
-      with:
-        manifest-path: .conda-pronto/pixi.toml
-        cache: true
-
-    - uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
-
-    - name: Configure custom packages
-      if: inputs.packages != '' || inputs.channels != '' || inputs.exclude != ''
+    - name: Resolve release assets
+      id: resolve
       shell: bash
-      working-directory: .conda-pronto
       env:
-        PRONTO_PACKAGES: ${{ inputs.packages }}
-        PRONTO_CHANNELS: ${{ inputs.channels }}
-        PRONTO_EXCLUDE: ${{ inputs.exclude }}
+        ACTION_PATH: ${{ github.action_path }}
+        ACTION_REF: ${{ github.action_ref }}
+        ACTION_REPOSITORY: ${{ github.action_repository }}
+        RUNNER_ARCH_NAME: ${{ runner.arch }}
+        RUNNER_OS_NAME: ${{ runner.os }}
       run: |
-        args=(configure)
-        if [ -n "$PRONTO_PACKAGES" ]; then
-          args+=(--packages "$PRONTO_PACKAGES")
+        case "${RUNNER_OS_NAME}/${RUNNER_ARCH_NAME}" in
+          Linux/X64)
+            target="x86_64-unknown-linux-gnu"
+            ext=""
+            ;;
+          Linux/ARM64)
+            target="aarch64-unknown-linux-gnu"
+            ext=""
+            ;;
+          macOS/X64)
+            target="x86_64-apple-darwin"
+            ext=""
+            ;;
+          macOS/ARM64)
+            target="aarch64-apple-darwin"
+            ext=""
+            ;;
+          Windows/X64)
+            target="x86_64-pc-windows-msvc"
+            ext=".exe"
+            ;;
+          *)
+            echo "Unsupported runner platform: ${RUNNER_OS_NAME}/${RUNNER_ARCH_NAME}" >&2
+            exit 1
+            ;;
+        esac
+
+        version="$ACTION_REF"
+        if [ -z "$version" ] && [ -n "$ACTION_PATH" ]; then
+          version="$(git -C "$ACTION_PATH" describe --tags --exact-match 2>/dev/null || true)"
         fi
-        if [ -n "$PRONTO_CHANNELS" ]; then
-          args+=(--channels "$PRONTO_CHANNELS")
+        if [[ ! "$version" =~ ^v[0-9]+([.][0-9]+)*([-.][0-9A-Za-z.-]+)?$ ]]; then
+          echo "Could not infer a conda-pronto release tag from ${version:-<empty>}." >&2
+          echo "Use jezdez/conda-pronto@vX.Y.Z. Branch refs do not have release assets." >&2
+          exit 1
         fi
-        if [ -n "$PRONTO_EXCLUDE" ]; then
-          args+=(--exclude "$PRONTO_EXCLUDE")
+
+        repository=""
+        if { [ -z "$ACTION_REF" ] || [ -z "$ACTION_REPOSITORY" ]; } && [ -n "$ACTION_PATH" ]; then
+          remote="$(git -C "$ACTION_PATH" config --get remote.origin.url 2>/dev/null || true)"
+          case "$remote" in
+            https://github.com/*)
+              repository="${remote#https://github.com/}"
+              repository="${repository%.git}"
+              ;;
+            git@github.com:*)
+              repository="${remote#git@github.com:}"
+              repository="${repository%.git}"
+              ;;
+          esac
         fi
-        pixi run -- cargo run -p conda-pronto -- "${args[@]}"
-        pixi lock
-        pixi run prepare
+        if [ -z "$repository" ]; then
+          repository="$ACTION_REPOSITORY"
+        fi
+        if [ -z "$repository" ]; then
+          repository="jezdez/conda-pronto"
+        fi
+        if [[ ! "$repository" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+          echo "Invalid action repository: ${repository}" >&2
+          exit 1
+        fi
+
+        tool_dir="${RUNNER_TEMP}/conda-pronto-${version}-${target}"
+        mkdir -p "$tool_dir"
+
+        echo "target=${target}" >> "$GITHUB_OUTPUT"
+        echo "version=${version}" >> "$GITHUB_OUTPUT"
+        echo "tool_dir=${tool_dir}" >> "$GITHUB_OUTPUT"
+        echo "repository=${repository}" >> "$GITHUB_OUTPUT"
+        echo "pronto_asset=pronto-${target}${ext}" >> "$GITHUB_OUTPUT"
+        echo "template_asset=pronto-runtime-template-${target}${ext}" >> "$GITHUB_OUTPUT"
+
+    - name: Download conda-pronto
+      id: download
+      shell: bash
+      env:
+        PRONTO_ASSET: ${{ steps.resolve.outputs.pronto_asset }}
+        PRONTO_REPOSITORY: ${{ steps.resolve.outputs.repository }}
+        PRONTO_VERSION: ${{ steps.resolve.outputs.version }}
+        TEMPLATE_ASSET: ${{ steps.resolve.outputs.template_asset }}
+        TOOL_DIR: ${{ steps.resolve.outputs.tool_dir }}
+      run: |
+        base_url="https://github.com/${PRONTO_REPOSITORY}/releases/download/${PRONTO_VERSION}"
+        curl --fail --location --show-error --silent --retry 3 \
+          --output "${TOOL_DIR}/${PRONTO_ASSET}" \
+          "${base_url}/${PRONTO_ASSET}"
+        curl --fail --location --show-error --silent --retry 3 \
+          --output "${TOOL_DIR}/${TEMPLATE_ASSET}" \
+          "${base_url}/${TEMPLATE_ASSET}"
+        curl --fail --location --show-error --silent --retry 3 \
+          --output "${TOOL_DIR}/SHA256SUMS" \
+          "${base_url}/SHA256SUMS"
+
+        grep -F "  ${PRONTO_ASSET}" "${TOOL_DIR}/SHA256SUMS" > "${TOOL_DIR}/SHA256SUMS.selected"
+        grep -F "  ${TEMPLATE_ASSET}" "${TOOL_DIR}/SHA256SUMS" >> "${TOOL_DIR}/SHA256SUMS.selected"
+        (
+          cd "$TOOL_DIR"
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum --check SHA256SUMS.selected
+          else
+            shasum -a 256 --check SHA256SUMS.selected
+          fi
+        )
+
+        chmod +x "${TOOL_DIR}/${PRONTO_ASSET}" "${TOOL_DIR}/${TEMPLATE_ASSET}" || true
+        echo "pronto_path=${TOOL_DIR}/${PRONTO_ASSET}" >> "$GITHUB_OUTPUT"
+        echo "template_path=${TOOL_DIR}/${TEMPLATE_ASSET}" >> "$GITHUB_OUTPUT"
+
+    - name: Validate project input
+      id: project
+      shell: bash
+      env:
+        PRONTO_LAYOUT: ${{ inputs.layout }}
+        PRONTO_NAME: ${{ inputs.name }}
+        PRONTO_ROOT: ${{ inputs.root }}
+      run: |
+        root="${PRONTO_ROOT:-.}"
+        case "$root" in
+          *$'\n'*|*$'\r'*)
+            echo "Project root must not contain newlines." >&2
+            exit 1
+            ;;
+        esac
+        if [[ ! "$PRONTO_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+          echo "Invalid distribution binary name: ${PRONTO_NAME}" >&2
+          echo "Use ASCII letters, digits, dots, dashes, or underscores, starting with a letter or digit." >&2
+          exit 1
+        fi
+        case "$PRONTO_LAYOUT" in
+          none|embedded)
+            ;;
+          *)
+            echo "Unsupported layout: ${PRONTO_LAYOUT}. Use 'none' or 'embedded'." >&2
+            exit 1
+            ;;
+        esac
+
+        if [ ! -d "$root" ]; then
+          echo "Project root does not exist: ${root}" >&2
+          exit 1
+        fi
+
+        if [ -f "${root}/conda.toml" ]; then
+          if [ ! -f "${root}/conda.lock" ]; then
+            echo "Found ${root}/conda.toml but missing ${root}/conda.lock." >&2
+            echo "Commit a solved lockfile before building release artifacts." >&2
+            exit 1
+          fi
+        elif [ -f "${root}/pixi.toml" ]; then
+          if [ ! -f "${root}/pixi.lock" ]; then
+            echo "Found ${root}/pixi.toml but missing ${root}/pixi.lock." >&2
+            echo "Commit a solved lockfile before building release artifacts." >&2
+            exit 1
+          fi
+        else
+          echo "No conda.toml or pixi.toml found in ${root}." >&2
+          echo "Add a project manifest and lockfile before using the conda-pronto action." >&2
+          exit 1
+        fi
+
+        echo "root=${root}" >> "$GITHUB_OUTPUT"
 
     - name: Build runtime
       shell: bash
-      working-directory: .conda-pronto
       env:
-        EMBED_BUNDLE: ${{ inputs.embed-bundle }}
         PRONTO_DOCS_URL: ${{ inputs.docs-url }}
+        PRONTO_LAYOUT: ${{ inputs.layout }}
         PRONTO_NAME: ${{ inputs.name }}
+        PRONTO_PATH: ${{ steps.download.outputs.pronto_path }}
+        PRONTO_ROOT: ${{ steps.project.outputs.root }}
+        PRONTO_TARGET: ${{ steps.resolve.outputs.target }}
+        TEMPLATE_PATH: ${{ steps.download.outputs.template_path }}
       run: |
-        TARGET="$(rustc -vV | grep '^host:' | cut -d' ' -f2)"
-        if [[ "$EMBED_BUNDLE" == "true" ]]; then
-          LAYOUT="embedded"
-        else
-          LAYOUT="none"
-        fi
-        pixi run -- cargo run -p conda-pronto -- build \
-          --layout "$LAYOUT" \
+        "$PRONTO_PATH" build \
+          --layout "$PRONTO_LAYOUT" \
           --name "$PRONTO_NAME" \
-          --target-label "$TARGET" \
+          --target "$PRONTO_TARGET" \
+          --target-label "$PRONTO_TARGET" \
+          --template "$TEMPLATE_PATH" \
+          --docs-url "$PRONTO_DOCS_URL" \
+          --root "$PRONTO_ROOT" \
           --out-dir "${GITHUB_WORKSPACE}/.pronto-artifacts"
 
-    - name: Stage binary
+    - name: Stage binary outputs
       id: stage
       shell: bash
       env:
-        EMBED_BUNDLE: ${{ inputs.embed-bundle }}
+        PRONTO_LAYOUT: ${{ inputs.layout }}
         PRONTO_NAME: ${{ inputs.name }}
+        PRONTO_TARGET: ${{ steps.resolve.outputs.target }}
       run: |
-        TARGET="$(rustc -vV | grep '^host:' | cut -d' ' -f2)"
-        if [[ "$EMBED_BUNDLE" == "true" ]]; then
-          PREFIX="${PRONTO_NAME}z"
+        if [ "$PRONTO_LAYOUT" = "embedded" ]; then
+          prefix="${PRONTO_NAME}z"
         else
-          PREFIX="$PRONTO_NAME"
+          prefix="$PRONTO_NAME"
         fi
-        STEM="${PREFIX}-${TARGET}"
-        if [[ "$TARGET" == *"windows"* ]]; then
-          ASSET_NAME="${STEM}.exe"
+        stem="${prefix}-${PRONTO_TARGET}"
+        if [[ "$PRONTO_TARGET" == *"windows"* ]]; then
+          asset_name="${stem}.exe"
         else
-          ASSET_NAME="${STEM}"
+          asset_name="${stem}"
         fi
-        ARTIFACT_DIR="${GITHUB_WORKSPACE}/.pronto-artifacts"
-        BINARY_PATH="${ARTIFACT_DIR}/${ASSET_NAME}"
-        echo "binary_path=${BINARY_PATH}" >> "$GITHUB_OUTPUT"
-        echo "asset_name=${ASSET_NAME}" >> "$GITHUB_OUTPUT"
-        echo "info_path=${ARTIFACT_DIR}/${STEM}.info.json" >> "$GITHUB_OUTPUT"
-        echo "lock_path=${ARTIFACT_DIR}/${STEM}.runtime.lock" >> "$GITHUB_OUTPUT"
-        echo "package_list_path=${ARTIFACT_DIR}/${STEM}.packages.txt" >> "$GITHUB_OUTPUT"
-        echo "checksums_path=${ARTIFACT_DIR}/${STEM}.sha256" >> "$GITHUB_OUTPUT"
+        artifact_dir="${GITHUB_WORKSPACE}/.pronto-artifacts"
+        binary_path="${artifact_dir}/${asset_name}"
+        echo "binary_path=${binary_path}" >> "$GITHUB_OUTPUT"
+        echo "asset_name=${asset_name}" >> "$GITHUB_OUTPUT"
+        echo "info_path=${artifact_dir}/${stem}.info.json" >> "$GITHUB_OUTPUT"
+        echo "lock_path=${artifact_dir}/${stem}.runtime.lock" >> "$GITHUB_OUTPUT"
+        echo "package_list_path=${artifact_dir}/${stem}.packages.txt" >> "$GITHUB_OUTPUT"
+        echo "checksums_path=${artifact_dir}/${stem}.sha256" >> "$GITHUB_OUTPUT"

@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/ci.yml"
+      - ".github/workflows/release.yml"
       - "action.yml"
       - "src/**"
       - "tests/**"
@@ -18,6 +19,7 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/ci.yml"
+      - ".github/workflows/release.yml"
       - "action.yml"
       - "src/**"
       - "tests/**"
@@ -74,9 +76,24 @@ jobs:
       - name: Test
         run: pixi run test
 
+      - name: Build runtime template
+        run: pixi run -- cargo build --locked --release --bin pronto-runtime --features runtime-template
+
       - name: Build smoke runtime
         shell: bash
-        run: pixi run -- cargo run -p conda-pronto -- build --layout none --name demo --target-label "$TARGET"
+        run: |
+          pronto="./target/release/pronto"
+          template="./target/release/pronto-runtime"
+          if [[ "$TARGET" == *"windows"* ]]; then
+            pronto="${pronto}.exe"
+            template="${template}.exe"
+          fi
+          "$pronto" build \
+            --layout none \
+            --name demo \
+            --target "$TARGET" \
+            --target-label "$TARGET" \
+            --template "$template"
 
       - name: Smoke test built runtime
         shell: bash
@@ -91,7 +108,13 @@ jobs:
 
       - name: Build embedded bundle
         if: matrix.target == 'x86_64-unknown-linux-gnu'
-        run: pixi run -- cargo run -p conda-pronto -- build --layout embedded --name demo --target-label "$TARGET"
+        run: |
+          ./target/release/pronto build \
+            --layout embedded \
+            --name demo \
+            --target "$TARGET" \
+            --target-label "$TARGET" \
+            --template ./target/release/pronto-runtime
 
       - name: Smoke test embedded bundle
         if: matrix.target == 'x86_64-unknown-linux-gnu'
