@@ -1,5 +1,60 @@
 # Changelog
 
+## conda-pronto 0.1.0 (draft)
+
+This is the first `conda-pronto` release after splitting the generic
+builder/runtime out of `conda-express`. The Rust crate is published as
+`conda-pronto` and installs the `pronto` CLI. The Python package registers the
+optional `conda pronto` plugin entry point for conda installations that want the
+subcommand form.
+
+### Added
+
+- Added publishable crates.io metadata for `conda-pronto`, including repository,
+  homepage, documentation, keywords, package include rules, and the Pixi
+  manifest needed by the packaged builder workflow.
+- Added the `conda-pronto` Python package metadata for the conda plugin entry
+  point.
+- Added a generic GitHub Action and reusable build workflow for named downstream
+  runtime binaries.
+- Documented the split between `conda-pronto` as the generic builder/runtime and
+  downstream distributions such as `conda-express`.
+
+### Changed
+
+- Clarified that `conda-pronto` does not ship a default first-party runtime
+  binary. Downstream projects choose the binary name, package set, channels,
+  documentation URL, and release channel.
+- Reworked the build workflow to check out `conda-pronto` directly and run the
+  same Pixi/Cargo build path used locally.
+- Removed default runtime examples from the documentation landing page so the
+  first screen describes the project boundary instead of implying a bundled
+  distribution.
+- Updated the Pixi test environment to install `conda-pronto` editable and run
+  Python tests against the installed package.
+
+### Security
+
+- Require SHA256 metadata in runtime locks when creating bundles.
+- Verify cached and newly downloaded bundle archives before staging them.
+- Verify offline bundle archives before installing from a local bundle
+  directory, and reject tampered packages.
+- Hardened GitHub workflows and the composite action by pinning actions by SHA,
+  using minimal permissions, disabling persisted checkout credentials, avoiding
+  `eval` for action inputs, and gating Codecov token access.
+
+### Verified
+
+- `cargo test --locked --features runtime-template`
+- `cargo clippy --locked --features runtime-template --bins --tests -- -D warnings`
+- `cargo publish --locked --dry-run`
+- `pixi run -e test pytest`
+- `pixi run -e test ruff-check`
+- `pixi run -e test ruff-format-check`
+- `pixi run -e docs docs`
+- `cargo audit`
+- `zizmor --persona auditor`
+
 ## Split from conda-express (2026-05-28)
 
 `conda-pronto` was split out of `jezdez/conda-express` to own the generic
