@@ -561,19 +561,20 @@ async fn download_and_bundle(
                 .unwrap_or("unknown");
 
             let dest = bundle_dir.join(archive_name);
+            let expected = pkg
+                .record()
+                .sha256
+                .as_ref()
+                .ok_or_else(|| format!("{archive_name} has no SHA256 in the runtime lock"))?;
 
             if dest.exists() {
-                if let Some(ref expected) = pkg.record().sha256 {
-                    let data = std::fs::read(&dest)?;
-                    let actual = Sha256::digest(&data);
-                    if actual.as_slice() == expected.as_slice() {
-                        return Ok::<(), Box<dyn std::error::Error + Send + Sync>>(());
-                    }
-                    eprintln!("SHA256 mismatch for {archive_name}, re-downloading");
-                    std::fs::remove_file(&dest)?;
-                } else {
-                    return Ok(());
+                let data = std::fs::read(&dest)?;
+                let actual = Sha256::digest(&data);
+                if actual.as_slice() == expected.as_slice() {
+                    return Ok::<(), Box<dyn std::error::Error + Send + Sync>>(());
                 }
+                eprintln!("SHA256 mismatch for {archive_name}, re-downloading");
+                std::fs::remove_file(&dest)?;
             }
 
             let response = client
@@ -592,11 +593,9 @@ async fn download_and_bundle(
                 .await
                 .map_err(|e| format!("failed to read {archive_name}: {e}"))?;
 
-            if let Some(ref expected) = pkg.record().sha256 {
-                let actual = Sha256::digest(&bytes);
-                if actual.as_slice() != expected.as_slice() {
-                    return Err(format!("SHA256 mismatch for {archive_name}").into());
-                }
+            let actual = Sha256::digest(&bytes);
+            if actual.as_slice() != expected.as_slice() {
+                return Err(format!("SHA256 mismatch for {archive_name}").into());
             }
 
             std::fs::write(&dest, &bytes)?;

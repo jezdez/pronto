@@ -48,6 +48,9 @@ on:
         type: string
         default: "false"
 
+permissions:
+  contents: read
+
 jobs:
   build:
     name: Build (${{ matrix.target }})
@@ -68,25 +71,101 @@ jobs:
             os: windows-latest
 
     steps:
-      - name: Build runtime
-        id: build
-        uses: jezdez/conda-pronto@main
+      - name: Checkout conda-pronto
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          name: ${{ inputs.name }}
-          packages: ${{ inputs.packages }}
-          channels: ${{ inputs.channels }}
-          exclude: ${{ inputs.exclude }}
+          repository: jezdez/conda-pronto
           ref: ${{ inputs.ref }}
-          embed-bundle: ${{ inputs.embed-bundle }}
+          path: .conda-pronto
+          persist-credentials: false
+
+      - name: Setup pixi
+        uses: prefix-dev/setup-pixi@1b2de7f3351f171c8b4dfeb558c639cb58ed4ec0 # v0.9.5
+        with:
+          manifest-path: .conda-pronto/pixi.toml
+          cache: true
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
+
+      - name: Configure custom packages
+        if: inputs.packages != '' || inputs.channels != '' || inputs.exclude != ''
+        shell: bash
+        working-directory: .conda-pronto
+        env:
+          PRONTO_PACKAGES: ${{ inputs.packages }}
+          PRONTO_CHANNELS: ${{ inputs.channels }}
+          PRONTO_EXCLUDE: ${{ inputs.exclude }}
+        run: |
+          args=(configure)
+          if [ -n "$PRONTO_PACKAGES" ]; then
+            args+=(--packages "$PRONTO_PACKAGES")
+          fi
+          if [ -n "$PRONTO_CHANNELS" ]; then
+            args+=(--channels "$PRONTO_CHANNELS")
+          fi
+          if [ -n "$PRONTO_EXCLUDE" ]; then
+            args+=(--exclude "$PRONTO_EXCLUDE")
+          fi
+          pixi run -- cargo run -p conda-pronto -- "${args[@]}"
+          pixi lock
+          pixi run prepare
+
+      - name: Build runtime
+        shell: bash
+        working-directory: .conda-pronto
+        env:
+          EMBED_BUNDLE: ${{ inputs.embed-bundle }}
+          PRONTO_NAME: ${{ inputs.name }}
+        run: |
+          TARGET="$(rustc -vV | grep '^host:' | cut -d' ' -f2)"
+          if [[ "$EMBED_BUNDLE" == "true" ]]; then
+            LAYOUT="embedded"
+          else
+            LAYOUT="none"
+          fi
+          pixi run -- cargo run -p conda-pronto -- build \
+            --layout "$LAYOUT" \
+            --name "$PRONTO_NAME" \
+            --target-label "$TARGET" \
+            --out-dir "${GITHUB_WORKSPACE}/.pronto-artifacts"
+
+      - name: Stage binary
+        id: stage
+        shell: bash
+        env:
+          EMBED_BUNDLE: ${{ inputs.embed-bundle }}
+          PRONTO_NAME: ${{ inputs.name }}
+        run: |
+          TARGET="$(rustc -vV | grep '^host:' | cut -d' ' -f2)"
+          if [[ "$EMBED_BUNDLE" == "true" ]]; then
+            PREFIX="${PRONTO_NAME}z"
+          else
+            PREFIX="$PRONTO_NAME"
+          fi
+          STEM="${PREFIX}-${TARGET}"
+          if [[ "$TARGET" == *"windows"* ]]; then
+            ASSET_NAME="${STEM}.exe"
+          else
+            ASSET_NAME="${STEM}"
+          fi
+          ARTIFACT_DIR="${GITHUB_WORKSPACE}/.pronto-artifacts"
+          BINARY_PATH="${ARTIFACT_DIR}/${ASSET_NAME}"
+          echo "binary_path=${BINARY_PATH}" >> "$GITHUB_OUTPUT"
+          echo "asset_name=${ASSET_NAME}" >> "$GITHUB_OUTPUT"
+          echo "info_path=${ARTIFACT_DIR}/${STEM}.info.json" >> "$GITHUB_OUTPUT"
+          echo "lock_path=${ARTIFACT_DIR}/${STEM}.runtime.lock" >> "$GITHUB_OUTPUT"
+          echo "package_list_path=${ARTIFACT_DIR}/${STEM}.packages.txt" >> "$GITHUB_OUTPUT"
+          echo "checksums_path=${ARTIFACT_DIR}/${STEM}.sha256" >> "$GITHUB_OUTPUT"
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ${{ steps.build.outputs.asset-name }}
+          name: ${{ steps.stage.outputs.asset_name }}
           path: |
-            ${{ steps.build.outputs.binary-path }}
-            ${{ steps.build.outputs.info-path }}
-            ${{ steps.build.outputs.lock-path }}
-            ${{ steps.build.outputs.package-list-path }}
-            ${{ steps.build.outputs.checksums-path }}
+            ${{ steps.stage.outputs.binary_path }}
+            ${{ steps.stage.outputs.info_path }}
+            ${{ steps.stage.outputs.lock_path }}
+            ${{ steps.stage.outputs.package_list_path }}
+            ${{ steps.stage.outputs.checksums_path }}
           retention-days: ${{ inputs.retention-days }}

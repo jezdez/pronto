@@ -74,6 +74,7 @@ runs:
         repository: jezdez/conda-pronto
         ref: ${{ inputs.ref }}
         path: .conda-pronto
+        persist-credentials: false
 
     - name: Setup pixi
       uses: prefix-dev/setup-pixi@1b2de7f3351f171c8b4dfeb558c639cb58ed4ec0 # v0.9.5
@@ -87,18 +88,22 @@ runs:
       if: inputs.packages != '' || inputs.channels != '' || inputs.exclude != ''
       shell: bash
       working-directory: .conda-pronto
+      env:
+        PRONTO_PACKAGES: ${{ inputs.packages }}
+        PRONTO_CHANNELS: ${{ inputs.channels }}
+        PRONTO_EXCLUDE: ${{ inputs.exclude }}
       run: |
-        ARGS=""
-        if [ -n "${{ inputs.packages }}" ]; then
-          ARGS="$ARGS --packages '${{ inputs.packages }}'"
+        args=(configure)
+        if [ -n "$PRONTO_PACKAGES" ]; then
+          args+=(--packages "$PRONTO_PACKAGES")
         fi
-        if [ -n "${{ inputs.channels }}" ]; then
-          ARGS="$ARGS --channels '${{ inputs.channels }}'"
+        if [ -n "$PRONTO_CHANNELS" ]; then
+          args+=(--channels "$PRONTO_CHANNELS")
         fi
-        if [ -n "${{ inputs.exclude }}" ]; then
-          ARGS="$ARGS --exclude '${{ inputs.exclude }}'"
+        if [ -n "$PRONTO_EXCLUDE" ]; then
+          args+=(--exclude "$PRONTO_EXCLUDE")
         fi
-        eval pixi run -- cargo run -p conda-pronto -- configure $ARGS
+        pixi run -- cargo run -p conda-pronto -- "${args[@]}"
         pixi lock
         pixi run prepare
 
@@ -108,6 +113,7 @@ runs:
       env:
         EMBED_BUNDLE: ${{ inputs.embed-bundle }}
         PRONTO_DOCS_URL: ${{ inputs.docs-url }}
+        PRONTO_NAME: ${{ inputs.name }}
       run: |
         TARGET="$(rustc -vV | grep '^host:' | cut -d' ' -f2)"
         if [[ "$EMBED_BUNDLE" == "true" ]]; then
@@ -117,7 +123,7 @@ runs:
         fi
         pixi run -- cargo run -p conda-pronto -- build \
           --layout "$LAYOUT" \
-          --name "${{ inputs.name }}" \
+          --name "$PRONTO_NAME" \
           --target-label "$TARGET" \
           --out-dir "${GITHUB_WORKSPACE}/.pronto-artifacts"
 
@@ -126,12 +132,13 @@ runs:
       shell: bash
       env:
         EMBED_BUNDLE: ${{ inputs.embed-bundle }}
+        PRONTO_NAME: ${{ inputs.name }}
       run: |
         TARGET="$(rustc -vV | grep '^host:' | cut -d' ' -f2)"
         if [[ "$EMBED_BUNDLE" == "true" ]]; then
-          PREFIX="${{ inputs.name }}z"
+          PREFIX="${PRONTO_NAME}z"
         else
-          PREFIX="${{ inputs.name }}"
+          PREFIX="$PRONTO_NAME"
         fi
         STEM="${PREFIX}-${TARGET}"
         if [[ "$TARGET" == *"windows"* ]]; then

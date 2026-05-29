@@ -26,6 +26,7 @@ use rattler_lock::LockFile;
 use rattler_networking::AuthenticationMiddleware;
 use rattler_repodata_gateway::{Gateway, RepoData, SourceConfig};
 use rattler_solve::{SolverImpl, SolverTask, resolvo};
+use sha2::{Digest, Sha256};
 
 use crate::config;
 
@@ -99,7 +100,7 @@ pub async fn from_lockfile_with_bundle(
     let (platform, required_packages) = lockfile_records(lock_content)?;
 
     let bundle_index = index_bundle_dir(bundle_dir)?;
-    let (matched, missing) = match_records_to_bundle(&required_packages, &bundle_index);
+    let (matched, missing) = match_records_to_bundle(&required_packages, &bundle_index)?;
 
     if offline && !missing.is_empty() {
         return Err(miette::miette!(
@@ -326,7 +327,7 @@ pub(crate) fn index_bundle_dir(dir: &Path) -> miette::Result<HashMap<String, Pat
 pub(crate) fn match_records_to_bundle(
     records: &[RepoDataRecord],
     bundle_index: &HashMap<String, PathBuf>,
-) -> (Vec<PathBuf>, Vec<String>) {
+) -> miette::Result<(Vec<PathBuf>, Vec<String>)> {
     let mut matched = Vec::new();
     let mut missing = Vec::new();
 
@@ -339,12 +340,40 @@ pub(crate) fn match_records_to_bundle(
             .to_string();
 
         if let Some(path) = bundle_index.get(&filename) {
+            verify_bundle_package(record, path, &filename)?;
             matched.push(path.clone());
         } else {
             missing.push(filename);
         }
     }
-    (matched, missing)
+    Ok((matched, missing))
+}
+
+fn verify_bundle_package(
+    record: &RepoDataRecord,
+    path: &Path,
+    filename: &str,
+) -> miette::Result<()> {
+    let expected = record.package_record.sha256.as_ref().ok_or_else(|| {
+        miette::miette!("{filename} has no SHA256 in the lockfile; refusing bundle install")
+    })?;
+    let data = std::fs::read(path).into_diagnostic().context(format!(
+        "failed to read bundle package for checksum: {}",
+        path.display()
+    ))?;
+    let actual = Sha256::digest(&data);
+    if actual.as_slice() != expected.as_slice() {
+        return Err(miette::miette!(
+            "SHA256 mismatch for bundled package {filename}: expected {}, got {}",
+            hex_bytes(expected.as_slice()),
+            hex_bytes(actual.as_slice())
+        ));
+    }
+    Ok(())
+}
+
+fn hex_bytes(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 /// Fetch repodata, solve, and install packages into the prefix.
@@ -582,7 +611,7 @@ mod tests {
         }
     }
 
-    fn make_record_with_url(filename: &str) -> RepoDataRecord {
+    fn make_record_with_url(filename: &str, data: &[u8]) -> RepoDataRecord {
         use rattler_conda_types::{
             PackageName, VersionWithSource,
             package::{CondaArchiveIdentifier, DistArchiveIdentifier},
@@ -594,6 +623,9 @@ mod tests {
             VersionWithSource::from_str("1.0").unwrap(),
             "0".to_string(),
         );
+        let mut record_json = serde_json::to_value(&record).unwrap();
+        record_json["sha256"] = serde_json::json!(hex_bytes(Sha256::digest(data).as_slice()));
+        let record = serde_json::from_value(record_json).unwrap();
         RepoDataRecord {
             package_record: record,
             identifier: DistArchiveIdentifier::from(
@@ -623,20 +655,40 @@ mod tests {
         #[case] record_filenames: Vec<&str>,
         #[case] expected_missing: usize,
     ) {
+        let tmp = tempfile::TempDir::new().unwrap();
         let mut bundle_index = HashMap::new();
         for name in &bundle_files {
-            bundle_index.insert(name.to_string(), PathBuf::from(format!("/bundle/{name}")));
+            let path = tmp.path().join(name);
+            std::fs::write(&path, b"package").unwrap();
+            bundle_index.insert(name.to_string(), path);
         }
         let records: Vec<RepoDataRecord> = record_filenames
             .iter()
-            .map(|f| make_record_with_url(f))
+            .map(|f| make_record_with_url(f, b"package"))
             .collect();
-        let (matched, missing) = match_records_to_bundle(&records, &bundle_index);
+        let (matched, missing) = match_records_to_bundle(&records, &bundle_index).unwrap();
         assert_eq!(
             matched.len(),
             record_filenames.len() - expected_missing,
             "matched count"
         );
         assert_eq!(missing.len(), expected_missing, "missing count");
+    }
+
+    #[test]
+    fn test_match_records_to_bundle_rejects_checksum_mismatch() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let filename = "a-1-h1.conda";
+        let path = tmp.path().join(filename);
+        std::fs::write(&path, b"tampered").unwrap();
+        let mut bundle_index = HashMap::new();
+        bundle_index.insert(filename.to_string(), path);
+        let records = vec![make_record_with_url(filename, b"package")];
+
+        let err = match_records_to_bundle(&records, &bundle_index).unwrap_err();
+        assert!(
+            err.to_string().contains("SHA256 mismatch"),
+            "unexpected error: {err:?}"
+        );
     }
 }
