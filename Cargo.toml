@@ -9,7 +9,23 @@ edition = "2024"
 description = "Build ready-to-run conda bootstrap binaries"
 license = "BSD-3-Clause"
 readme = "README.md"
-publish = false
+repository = "https://github.com/jezdez/conda-pronto"
+homepage = "https://jezdez.github.io/conda-pronto/"
+documentation = "https://jezdez.github.io/conda-pronto/"
+keywords = ["conda", "bootstrap", "installer", "runtime"]
+include = [
+  "/Cargo.lock",
+  "/Cargo.toml",
+  "/CHANGELOG.md",
+  "/LICENSE",
+  "/README.md",
+  "/src/*.rs",
+  "/src/bin/*.rs",
+  "/src/snapshots/*.snap",
+  "/tests/*.rs",
+  "/tests/snapshots/*.snap",
+]
+publish = ["crates-io"]
 default-run = "pronto"
 
 [[bin]]
