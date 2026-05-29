@@ -12,7 +12,7 @@ inputs:
     description: "Distribution binary name to build."
     required: true
   root:
-    description: "Project root containing conda.toml/conda.lock or pixi.toml/pixi.lock."
+    description: "Project root containing conda.toml/conda.lock, pixi.toml/pixi.lock, or pyproject.toml/pixi.lock."
     required: false
     default: "."
   layout:
@@ -133,6 +133,7 @@ runs:
       id: download
       shell: bash
       env:
+        GH_TOKEN: ${{ github.token }}
         PRONTO_ASSET: ${{ steps.resolve.outputs.pronto_asset }}
         PRONTO_REPOSITORY: ${{ steps.resolve.outputs.repository }}
         PRONTO_VERSION: ${{ steps.resolve.outputs.version }}
@@ -149,6 +150,21 @@ runs:
         curl --fail --location --show-error --silent --retry 3 \
           --output "${TOOL_DIR}/SHA256SUMS" \
           "${base_url}/SHA256SUMS"
+
+        if ! command -v gh >/dev/null 2>&1; then
+          echo "GitHub CLI is required to verify release attestations." >&2
+          exit 1
+        fi
+        signer_workflow="${PRONTO_REPOSITORY}/.github/workflows/release.yml"
+        gh attestation verify "${TOOL_DIR}/${PRONTO_ASSET}" \
+          --repo "$PRONTO_REPOSITORY" \
+          --signer-workflow "$signer_workflow" >/dev/null
+        gh attestation verify "${TOOL_DIR}/${TEMPLATE_ASSET}" \
+          --repo "$PRONTO_REPOSITORY" \
+          --signer-workflow "$signer_workflow" >/dev/null
+        gh attestation verify "${TOOL_DIR}/SHA256SUMS" \
+          --repo "$PRONTO_REPOSITORY" \
+          --signer-workflow "$signer_workflow" >/dev/null
 
         grep -F "  ${PRONTO_ASSET}" "${TOOL_DIR}/SHA256SUMS" > "${TOOL_DIR}/SHA256SUMS.selected"
         grep -F "  ${TEMPLATE_ASSET}" "${TOOL_DIR}/SHA256SUMS" >> "${TOOL_DIR}/SHA256SUMS.selected"
@@ -211,8 +227,14 @@ runs:
             echo "Commit a solved lockfile before building release artifacts." >&2
             exit 1
           fi
+        elif [ -f "${root}/pyproject.toml" ]; then
+          if [ ! -f "${root}/pixi.lock" ]; then
+            echo "Found ${root}/pyproject.toml but missing ${root}/pixi.lock." >&2
+            echo "Commit a solved lockfile before building release artifacts." >&2
+            exit 1
+          fi
         else
-          echo "No conda.toml or pixi.toml found in ${root}." >&2
+          echo "No conda.toml, pixi.toml, or pyproject.toml found in ${root}." >&2
           echo "Add a project manifest and lockfile before using the conda-pronto action." >&2
           exit 1
         fi

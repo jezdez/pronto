@@ -187,6 +187,22 @@ fn test_runtime_bootstrap_offline_no_lock_rejected() {
 }
 
 #[test]
+fn test_runtime_bootstrap_package_requires_live_solve() {
+    let tmp = TempDir::new().unwrap();
+    runtime()
+        .args([
+            "bootstrap",
+            "--prefix",
+            tmp.path().to_str().unwrap(),
+            "--package",
+            "numpy",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("only affect live solves"));
+}
+
+#[test]
 fn test_runtime_bootstrap_bundle_bad_dir_rejected() {
     let tmp = TempDir::new().unwrap();
     let bad_dir = tmp.path().join("nonexistent");

@@ -13,7 +13,7 @@ pub use crate::runtime_data::RuntimeConfig;
 /// configuration for an unstamped `pronto-runtime` binary.
 const EMBEDDED_PIXI_TOML: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/pixi.toml"));
 
-// ─── Runtime configuration ──────────────────────────────────────────────────
+// Runtime configuration.
 
 #[derive(serde::Deserialize)]
 struct PixiToml {
@@ -61,7 +61,7 @@ pub(crate) fn install_method() -> Option<&'static str> {
     runtime_data::current().header.install_method.as_deref()
 }
 
-// ─── Prefix metadata ────────────────────────────────────────────────────────
+// Prefix metadata.
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct PrefixMetadata {
@@ -103,7 +103,7 @@ pub fn read_metadata(prefix: &Path) -> miette::Result<PrefixMetadata> {
     serde_json::from_str(&data).into_diagnostic()
 }
 
-// ─── conda-meta/frozen (CEP 22) ──────────────────────────────────────────────
+// conda-meta/frozen (CEP 22).
 
 /// Write a CEP 22 frozen marker to protect the base prefix from accidental
 /// modification. Users should create named environments for their work and
@@ -122,18 +122,29 @@ pub fn write_frozen(prefix: &Path) -> miette::Result<()> {
     Ok(())
 }
 
-// ─── .condarc ────────────────────────────────────────────────────────────────
+// .condarc.
 
-pub fn write_condarc(prefix: &Path) -> miette::Result<()> {
+pub fn write_condarc(prefix: &Path, channels: &[String]) -> miette::Result<()> {
     let condarc_path = prefix.join(".condarc");
-    let contents = "\
+    let mut contents = "\
 solver: rattler
 auto_activate_base: false
 notify_outdated_conda: false
 show_channel_urls: true
-channels:
-  - conda-forge
-";
+"
+    .to_string();
+
+    if channels.is_empty() {
+        contents.push_str("channels: []\n");
+    } else {
+        contents.push_str("channels:\n");
+        for channel in channels {
+            contents.push_str("  - ");
+            contents.push_str(&serde_json::to_string(channel).into_diagnostic()?);
+            contents.push('\n');
+        }
+    }
+
     std::fs::create_dir_all(prefix).into_diagnostic()?;
     std::fs::write(&condarc_path, contents).into_diagnostic()?;
     eprintln!("   Wrote {}", condarc_path.display());
@@ -209,7 +220,14 @@ mod tests {
     #[test]
     fn test_write_condarc_snapshot() {
         let tmp = TempDir::new().unwrap();
-        write_condarc(tmp.path()).unwrap();
+        write_condarc(
+            tmp.path(),
+            &[
+                "conda-forge".to_string(),
+                "https://repo.example.test/conda".to_string(),
+            ],
+        )
+        .unwrap();
 
         let contents = std::fs::read_to_string(tmp.path().join(".condarc")).unwrap();
         insta::assert_snapshot!("condarc", contents);
@@ -218,10 +236,12 @@ mod tests {
     #[test]
     fn test_write_condarc_idempotent() {
         let tmp = TempDir::new().unwrap();
-        write_condarc(tmp.path()).unwrap();
+        let channels = ["conda-forge".to_string()];
+
+        write_condarc(tmp.path(), &channels).unwrap();
         let first = std::fs::read_to_string(tmp.path().join(".condarc")).unwrap();
 
-        write_condarc(tmp.path()).unwrap();
+        write_condarc(tmp.path(), &channels).unwrap();
         let second = std::fs::read_to_string(tmp.path().join(".condarc")).unwrap();
 
         assert_eq!(

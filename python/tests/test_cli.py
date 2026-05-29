@@ -64,6 +64,30 @@ def test_run_pronto_reports_missing_executable(
     assert "could not find" in capsys.readouterr().err
 
 
+def test_run_pronto_prefers_current_environment_binary(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    python = bin_dir / "python"
+    pronto = bin_dir / ("pronto.exe" if cli.os.name == "nt" else "pronto")
+    python.write_text("")
+    pronto.write_text("")
+    calls: list[list[str]] = []
+
+    def fake_run(args: list[str]) -> SimpleNamespace:
+        calls.append(args)
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(cli.sys, "executable", str(python))
+    monkeypatch.setattr(cli.shutil, "which", lambda _name: "/tmp/path-pronto")
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+
+    assert run_pronto(["inspect"]) == 0
+    assert calls == [[str(pronto), "inspect"]]
+
+
 def test_execute_returns_pronto_status(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[list[str]] = []
 

@@ -7,6 +7,7 @@ import os
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -35,7 +36,7 @@ def main(argv: Sequence[str] | None = None) -> None:
 
 def run_pronto(argv: Sequence[str], *, executable: str | None = None) -> int:
     """Delegate to the canonical ``pronto`` executable."""
-    pronto = executable or os.environ.get("CONDA_PRONTO_EXECUTABLE") or shutil.which("pronto")
+    pronto = executable or os.environ.get("CONDA_PRONTO_EXECUTABLE") or installed_pronto()
     if pronto is None:
         print(
             "conda-pronto could not find the `pronto` executable on PATH.",
@@ -54,6 +55,15 @@ def run_pronto(argv: Sequence[str], *, executable: str | None = None) -> int:
     except FileNotFoundError:
         print(f"conda-pronto could not execute {pronto!r}.", file=sys.stderr)
         return 127
+
+
+def installed_pronto() -> str | None:
+    """Find the ``pronto`` executable installed with the current Python env."""
+    binary = "pronto.exe" if os.name == "nt" else "pronto"
+    env_binary = Path(sys.executable).with_name(binary)
+    if env_binary.is_file():
+        return str(env_binary)
+    return shutil.which("pronto")
 
 
 if __name__ == "__main__":

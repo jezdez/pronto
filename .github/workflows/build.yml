@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       root:
-        description: "Project root containing conda.toml/conda.lock or pixi.toml/pixi.lock."
+        description: "Project root containing conda.toml/conda.lock, pixi.toml/pixi.lock, or pyproject.toml/pixi.lock."
         required: false
         type: string
         default: "project"

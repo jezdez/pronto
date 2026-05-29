@@ -60,11 +60,29 @@ fn reject_dangerous_prefix(prefix: &Path) -> miette::Result<()> {
 pub(crate) fn validate_bootstrap_flags(
     offline: bool,
     no_lock: bool,
+    lockfile: &Option<std::path::PathBuf>,
     bundle: &Option<std::path::PathBuf>,
+    channels: &Option<Vec<String>>,
+    packages: &Option<Vec<String>>,
 ) -> miette::Result<()> {
+    if no_lock && lockfile.is_some() {
+        return Err(miette::miette!(
+            "--no-lock and --lockfile are incompatible (choose one package source)"
+        ));
+    }
     if offline && no_lock {
         return Err(miette::miette!(
             "--offline and --no-lock are incompatible (offline mode requires a lockfile)"
+        ));
+    }
+    if no_lock && bundle.is_some() {
+        return Err(miette::miette!(
+            "--bundle and --no-lock are incompatible (bundles require a lockfile)"
+        ));
+    }
+    if !no_lock && (channels.is_some() || packages.is_some()) {
+        return Err(miette::miette!(
+            "--channel and --package only affect live solves; pass --no-lock or update the project lockfile"
         ));
     }
     if let Some(dir) = bundle
@@ -187,7 +205,7 @@ pub(crate) async fn bootstrap(
         };
     }
 
-    write_condarc(prefix)?;
+    write_condarc(prefix, &channels)?;
     write_frozen(prefix)?;
     write_metadata(prefix, &channels, &specs)?;
 
@@ -589,7 +607,7 @@ mod tests {
 
         std::fs::create_dir(prefix.join("conda-meta")).unwrap();
 
-        crate::config::write_condarc(prefix).unwrap();
+        crate::config::write_condarc(prefix, &["conda-forge".to_string()]).unwrap();
         crate::config::write_frozen(prefix).unwrap();
         crate::config::write_metadata(
             prefix,
@@ -692,12 +710,16 @@ mod tests {
     }
 
     #[rstest]
-    #[case::offline_no_lock(true, true, false, "incompatible")]
-    #[case::bundle_missing_dir(false, false, true, "not a directory")]
+    #[case::offline_no_lock(true, true, false, false, false, "incompatible")]
+    #[case::bundle_missing_dir(false, false, true, false, false, "not a directory")]
+    #[case::no_lock_with_lockfile(false, true, false, true, false, "choose one package source")]
+    #[case::locked_with_package(false, false, false, false, true, "only affect live solves")]
     fn test_validate_bootstrap_flags(
         #[case] offline: bool,
         #[case] no_lock: bool,
         #[case] bad_bundle_path: bool,
+        #[case] has_lockfile: bool,
+        #[case] has_package: bool,
         #[case] expected_err_contains: &str,
     ) {
         let bundle = if bad_bundle_path {
@@ -705,7 +727,10 @@ mod tests {
         } else {
             None
         };
-        let result = validate_bootstrap_flags(offline, no_lock, &bundle);
+        let lockfile = has_lockfile.then(|| std::path::PathBuf::from("runtime.lock"));
+        let packages = has_package.then(|| vec!["numpy".to_string()]);
+        let result =
+            validate_bootstrap_flags(offline, no_lock, &lockfile, &bundle, &None, &packages);
         assert!(result.is_err(), "should fail validation");
         let err = result.unwrap_err().to_string();
         assert!(
@@ -718,13 +743,13 @@ mod tests {
     fn test_validate_bootstrap_flags_valid_bundle() {
         let tmp = TempDir::new().unwrap();
         let bundle = Some(tmp.path().to_path_buf());
-        let result = validate_bootstrap_flags(false, false, &bundle);
+        let result = validate_bootstrap_flags(false, false, &None, &bundle, &None, &None);
         assert!(result.is_ok(), "valid bundle dir should pass validation");
     }
 
     #[test]
     fn test_validate_bootstrap_flags_no_flags() {
-        let result = validate_bootstrap_flags(false, false, &None);
+        let result = validate_bootstrap_flags(false, false, &None, &None, &None, &None);
         assert!(result.is_ok(), "no flags should pass validation");
     }
 }

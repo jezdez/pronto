@@ -212,13 +212,13 @@ fn project_root(override_root: Option<&Path>) -> PathBuf {
     let current_dir = std::env::current_dir().expect("failed to read current directory");
     find_project_root(&current_dir)
         .or_else(|| find_project_root(&PathBuf::from(env!("CARGO_MANIFEST_DIR"))))
-        .expect("could not find project root containing conda.toml or pixi.toml")
+        .expect("could not find project root containing conda.toml, pixi.toml, or pyproject.toml")
 }
 
 fn find_project_root(start: &Path) -> Option<PathBuf> {
     start
         .ancestors()
-        .find(|p| p.join("conda.toml").exists() || p.join("pixi.toml").exists())
+        .find(|p| has_supported_manifest(p))
         .map(Path::to_path_buf)
 }
 
@@ -234,6 +234,29 @@ struct DerivedRuntimeLock {
 struct ProjectInput {
     lock_path: PathBuf,
     config: ProntoConfig,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ManifestKind {
+    CondaToml,
+    PixiToml,
+    PixiPyproject,
+}
+
+impl ManifestKind {
+    fn lockfile_name(self) -> &'static str {
+        match self {
+            Self::CondaToml => "conda.lock",
+            Self::PixiToml | Self::PixiPyproject => "pixi.lock",
+        }
+    }
+
+    fn lock_command(self) -> &'static str {
+        match self {
+            Self::CondaToml => "conda workspace lock",
+            Self::PixiToml | Self::PixiPyproject => "pixi lock",
+        }
+    }
 }
 
 fn write_runtime_lock(check: bool, root_override: Option<PathBuf>) {
@@ -367,21 +390,14 @@ fn derive_runtime_lock(root: &Path) -> DerivedRuntimeLock {
 
 fn discover_project_input(root: &Path) -> ProjectInput {
     let manifest_path = discover_manifest_path(root);
+    let kind = manifest_kind(&manifest_path);
 
-    let lock_path = if manifest_path.file_name().and_then(|n| n.to_str()) == Some("conda.toml") {
-        root.join("conda.lock")
-    } else {
-        root.join("pixi.lock")
-    };
+    let lock_path = root.join(kind.lockfile_name());
     if !lock_path.exists() {
-        let lock_command = if lock_path.file_name().and_then(|n| n.to_str()) == Some("conda.lock") {
-            "conda workspace lock"
-        } else {
-            "pixi lock"
-        };
         panic!(
-            "lockfile not found at {}; run `{lock_command}` first",
-            lock_path.display()
+            "lockfile not found at {}; run `{}` first",
+            lock_path.display(),
+            kind.lock_command()
         );
     }
 
@@ -401,12 +417,53 @@ fn discover_manifest_path(root: &Path) -> PathBuf {
         root.join("conda.toml")
     } else if root.join("pixi.toml").exists() {
         root.join("pixi.toml")
+    } else if is_supported_pyproject_manifest(&root.join("pyproject.toml")) {
+        root.join("pyproject.toml")
     } else {
         panic!(
-            "could not find conda.toml or pixi.toml in {}",
+            "could not find conda.toml, pixi.toml, or Pixi pyproject.toml in {}",
             root.display()
         );
     }
+}
+
+fn has_supported_manifest(root: &Path) -> bool {
+    root.join("conda.toml").exists()
+        || root.join("pixi.toml").exists()
+        || is_supported_pyproject_manifest(&root.join("pyproject.toml"))
+}
+
+fn manifest_kind(manifest_path: &Path) -> ManifestKind {
+    match manifest_path.file_name().and_then(|n| n.to_str()) {
+        Some("conda.toml") => ManifestKind::CondaToml,
+        Some("pixi.toml") => ManifestKind::PixiToml,
+        Some("pyproject.toml") => ManifestKind::PixiPyproject,
+        _ => panic!("unsupported manifest path: {}", manifest_path.display()),
+    }
+}
+
+fn is_supported_pyproject_manifest(path: &Path) -> bool {
+    if !path.exists() {
+        return false;
+    }
+
+    let Ok(content) = std::fs::read_to_string(path) else {
+        return false;
+    };
+    let Ok(value) = toml::from_str::<toml::Value>(&content) else {
+        return false;
+    };
+
+    has_toml_table(&value, &["tool", "pixi"]) || has_toml_table(&value, &["tool", "pronto"])
+}
+
+fn has_toml_table(value: &toml::Value, path: &[&str]) -> bool {
+    let Some((head, tail)) = path.split_first() else {
+        return value.is_table();
+    };
+    value
+        .get(*head)
+        .is_some_and(|nested| has_toml_table(nested, tail))
 }
 
 fn write_generated_runtime_lock(path: &Path, content: &str) {
@@ -1326,6 +1383,7 @@ fn configure(
 ) {
     let root = project_root(root_override.as_deref());
     let manifest_path = discover_manifest_path(&root);
+    let kind = manifest_kind(&manifest_path);
     let content = std::fs::read_to_string(&manifest_path)
         .unwrap_or_else(|e| panic!("failed to read {}: {e}", manifest_path.display()));
 
@@ -1339,7 +1397,15 @@ fn configure(
             let (name, version) = pixi_dependency_from_matchspec(spec);
             deps[&name] = toml_edit::value(version);
         }
-        doc["feature"]["runtime"]["dependencies"] = toml_edit::Item::Table(deps);
+        match kind {
+            ManifestKind::PixiPyproject => {
+                doc["tool"]["pixi"]["feature"]["runtime"]["dependencies"] =
+                    toml_edit::Item::Table(deps);
+            }
+            ManifestKind::CondaToml | ManifestKind::PixiToml => {
+                doc["feature"]["runtime"]["dependencies"] = toml_edit::Item::Table(deps);
+            }
+        }
         eprintln!("configured {} custom packages", packages.len());
 
         let mut tool_packages = toml_edit::Array::new();
@@ -1354,7 +1420,14 @@ fn configure(
         for c in &channels {
             arr.push(c.to_string());
         }
-        doc["workspace"]["channels"] = toml_edit::value(arr);
+        match kind {
+            ManifestKind::PixiPyproject => {
+                doc["tool"]["pixi"]["workspace"]["channels"] = toml_edit::value(arr);
+            }
+            ManifestKind::CondaToml | ManifestKind::PixiToml => {
+                doc["workspace"]["channels"] = toml_edit::value(arr);
+            }
+        }
 
         let mut tool_channels = toml_edit::Array::new();
         for c in &channels {
@@ -1469,6 +1542,7 @@ mod tests {
     use rattler_conda_types::{PackageName, PackageRecord, VersionWithSource};
     use rattler_lock::CondaPackageData;
     use std::str::FromStr;
+    use tempfile::TempDir;
 
     fn make_pkg(name: &str, depends: &[&str]) -> CondaPackageData {
         let mut record = PackageRecord::new(
@@ -1489,6 +1563,115 @@ mod tests {
                 .unwrap(),
             channel: Some("test".to_string()),
         })
+    }
+
+    #[test]
+    fn test_find_project_root_finds_pixi_pyproject() {
+        let tmp = TempDir::new().unwrap();
+        let nested = tmp.path().join("src").join("nested");
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::write(
+            tmp.path().join("pyproject.toml"),
+            r#"
+[tool.pixi.workspace]
+name = "demo"
+channels = ["conda-forge"]
+"#,
+        )
+        .unwrap();
+
+        assert_eq!(find_project_root(&nested), Some(tmp.path().to_path_buf()));
+    }
+
+    #[test]
+    fn test_discover_manifest_prefers_conda_toml() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::write(tmp.path().join("conda.toml"), "").unwrap();
+        std::fs::write(tmp.path().join("pixi.toml"), "").unwrap();
+        std::fs::write(tmp.path().join("pyproject.toml"), "[tool.pixi.workspace]\n").unwrap();
+
+        assert_eq!(
+            discover_manifest_path(tmp.path()),
+            tmp.path().join("conda.toml")
+        );
+    }
+
+    #[test]
+    fn test_discover_project_input_uses_pixi_lock_for_pyproject() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::write(
+            tmp.path().join("pyproject.toml"),
+            r#"
+[tool.pixi.workspace]
+name = "demo"
+channels = ["conda-forge"]
+
+[tool.pronto]
+environment = "runtime"
+"#,
+        )
+        .unwrap();
+        std::fs::write(tmp.path().join("pixi.lock"), "").unwrap();
+
+        let input = discover_project_input(tmp.path());
+
+        assert_eq!(input.lock_path, tmp.path().join("pixi.lock"));
+        assert_eq!(input.config.environment.as_deref(), Some("runtime"));
+    }
+
+    #[test]
+    fn test_configure_updates_pixi_pyproject_sections() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::write(
+            tmp.path().join("pyproject.toml"),
+            r#"
+[tool.pixi.workspace]
+name = "demo"
+channels = ["conda-forge"]
+
+[tool.pronto]
+environment = "runtime"
+"#,
+        )
+        .unwrap();
+
+        configure(
+            vec!["python >=3.12,<3.15".to_string()],
+            vec![
+                "conda-forge".to_string(),
+                "https://repo.example.test/conda".to_string(),
+            ],
+            vec!["conda-libmamba-solver".to_string()],
+            Some(tmp.path().to_path_buf()),
+        );
+
+        let content = std::fs::read_to_string(tmp.path().join("pyproject.toml")).unwrap();
+        let doc: toml::Value = toml::from_str(&content).unwrap();
+
+        assert_eq!(
+            doc["tool"]["pixi"]["feature"]["runtime"]["dependencies"]["python"]
+                .as_str()
+                .unwrap(),
+            ">=3.12,<3.15"
+        );
+        assert_eq!(
+            doc["tool"]["pixi"]["workspace"]["channels"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|value| value.as_str().unwrap())
+                .collect::<Vec<_>>(),
+            vec!["conda-forge", "https://repo.example.test/conda"]
+        );
+        assert_eq!(
+            doc["tool"]["pronto"]["exclude"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|value| value.as_str().unwrap())
+                .collect::<Vec<_>>(),
+            vec!["conda-libmamba-solver"]
+        );
     }
 
     #[test]

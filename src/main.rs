@@ -62,14 +62,6 @@ async fn async_main() -> miette::Result<()> {
                     offline,
                 }) => {
                     let prefix = prefix.map(Ok).unwrap_or_else(policy::default_prefix)?;
-                    let lock_source = if no_lock {
-                        LockSource::None
-                    } else if let Some(path) = lockfile {
-                        LockSource::File(path)
-                    } else {
-                        LockSource::Embedded
-                    };
-
                     let bundle = bundle.or_else(|| {
                         env::var(policy::bundle_env_var())
                             .ok()
@@ -82,7 +74,17 @@ async fn async_main() -> miette::Result<()> {
                             .filter(|v| !v.is_empty())
                             .is_some_and(|v| v != "0" && v.to_lowercase() != "false");
 
-                    validate_bootstrap_flags(offline, no_lock, &bundle)?;
+                    validate_bootstrap_flags(
+                        offline, no_lock, &lockfile, &bundle, &channel, &package,
+                    )?;
+
+                    let lock_source = if no_lock {
+                        LockSource::None
+                    } else if let Some(path) = lockfile {
+                        LockSource::File(path)
+                    } else {
+                        LockSource::Embedded
+                    };
 
                     return bootstrap(
                         &prefix,

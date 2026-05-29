@@ -100,11 +100,11 @@ pub enum Command {
         #[clap(long)]
         prefix: Option<PathBuf>,
 
-        /// Channels to use (default: conda-forge)
+        /// Channels to use for a live solve (default: stamped runtime channels)
         #[clap(short, long)]
         channel: Option<Vec<String>>,
 
-        /// Additional packages to install
+        /// Additional package specs to install during a live solve
         #[clap(short, long)]
         package: Option<Vec<String>>,
 
