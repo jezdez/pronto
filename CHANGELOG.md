@@ -41,6 +41,8 @@ subcommand for conda installations that want plugin-style integration.
 - Runtime `--channel` and `--package` flags are now accepted only for live
   solves with `--no-lock`; lockfile-based builds use the committed lockfile
   contents.
+- Default builds use platform-native TLS. The `rustls-tls` feature remains
+  available for downstream builds that want Rustls explicitly.
 - The `conda pronto` adapter now prefers the `pronto` executable installed next
   to the current Python interpreter before falling back to `PATH`.
 - The GitHub Action now expects committed manifest and lockfile input. It no

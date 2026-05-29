@@ -10,12 +10,6 @@ rust = ">=1.85"
 cargo-llvm-cov = ">=0.6"
 sccache = ">=0.10"
 
-[target.linux-64.dependencies]
-gcc_impl_linux-64 = "<15"
-
-[target.linux-aarch64.dependencies]
-gcc_impl_linux-aarch64 = "<15"
-
 [activation.env]
 RUSTC_WRAPPER = "sccache"
 

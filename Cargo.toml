@@ -39,7 +39,7 @@ name = "pronto"
 path = "src/bin/pronto.rs"
 
 [features]
-default = ["rustls-tls"]
+default = ["native-tls"]
 native-tls = [
   "reqwest/native-tls",
   "rattler/native-tls",
