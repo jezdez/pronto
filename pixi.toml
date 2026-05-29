@@ -48,11 +48,24 @@ conda = ">=25.1"
 conda-rattler-solver = "*"
 conda-spawn = ">=0.1.0"
 
+[feature.test.dependencies]
+python = ">=3.12"
+conda = ">=25.1"
+pytest = ">=8.0"
+ruff = ">=0.15"
+
+[feature.test.tasks]
+pytest = "PYTHONPATH=python pytest python/tests"
+ruff-check = "ruff check python pyproject.toml"
+ruff-format-check = "ruff format --check python pyproject.toml"
+
 [environments]
 docs = ["docs"]
 runtime = { features = ["runtime"], no-default-feature = true }
+test = ["test"]
 
 [tool.pronto]
+environment = "runtime"
 channels = ["conda-forge"]
 packages = [
     "python >=3.12",
