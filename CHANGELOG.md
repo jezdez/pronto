@@ -1,130 +1,65 @@
 # Changelog
 
-## conda-pronto 0.1.0 (draft)
+All notable user-facing changes to `conda-pronto` are documented here.
 
-This is the first `conda-pronto` release after splitting the generic
-builder/runtime out of `conda-express`. The Rust crate is published as
-`conda-pronto` and installs the `pronto` CLI. The Python package registers the
-optional `conda pronto` plugin entry point for conda installations that want the
-subcommand form.
+## 0.1.0 - Unreleased
+
+Initial release of `conda-pronto`, a generic builder for ready-to-run conda
+bootstrap binaries. The Rust crate is published as `conda-pronto` and installs
+the `pronto` CLI. The Python package provides the optional `conda pronto`
+subcommand for conda installations that want plugin-style integration.
 
 ### Added
 
-- Added publishable crates.io metadata for `conda-pronto`, including repository,
-  homepage, documentation, keywords, package include rules, and the Pixi
-  manifest needed by the packaged builder workflow.
-- Added the `conda-pronto` Python package metadata for the conda plugin entry
-  point.
-- Added a generic, lockfile-first GitHub Action and reusable build workflow for
-  named downstream runtime binaries.
-- Added a release workflow that publishes tagged `pronto` and
-  `pronto-runtime-template` assets plus `SHA256SUMS` for the action to consume.
-- Added support for Pixi projects that keep Pixi configuration in
-  `pyproject.toml` with a committed `pixi.lock`.
-- Added a `cargo deny` policy for Rust advisories, license checks, dependency
-  bans, and source restrictions.
-- Documented the split between `conda-pronto` as the generic builder/runtime and
-  downstream distributions such as `conda-express`.
+- `pronto`, a CLI for building named downstream conda bootstrap binaries from
+  committed project metadata and lockfiles.
+- `pronto-runtime-template`, the generic runtime template used to produce
+  downstream binaries.
+- A GitHub Action and reusable workflow for release builds that consume
+  published `conda-pronto` assets instead of rebuilding the builder from source.
+- Support for `conda.toml` with `conda.lock`, `pixi.toml` with `pixi.lock`, and
+  Pixi configuration in `pyproject.toml` with `pixi.lock`.
+- Offline bundle generation for runtimes that should install from embedded or
+  pre-downloaded conda package archives.
+- Package exclusion after lockfile resolution, so downstream distributions can
+  trim packages from a solved environment before building a runtime.
+- Staged build metadata for generated runtimes, including `.runtime.lock`,
+  `.packages.txt`, `.info.json`, and `.sha256` files.
+- Release assets for tagged builds: `pronto`, `pronto-runtime-template`, and
+  `SHA256SUMS`.
+- Crates.io and PyPI packaging metadata for publishing `conda-pronto`.
 
 ### Changed
 
-- Clarified that `conda-pronto` does not ship a default first-party runtime
-  binary. Downstream projects choose the binary name, package set, channels,
-  documentation URL, and release channel.
-- Reworked the GitHub Action and reusable build workflow to use released
-  `pronto` and runtime-template binaries instead of rebuilding the generic
-  runtime from a Rust source checkout.
-- Simplified the GitHub Action interface so release builds consume committed
-  `conda.toml`/`conda.lock`, `pixi.toml`/`pixi.lock`, or
-  `pyproject.toml`/`pixi.lock` input instead of generating or mutating
-  manifests in CI.
-- Changed generated runtime `.condarc` files to use the stamped runtime
-  channels instead of hard-coding `conda-forge`.
-- Changed runtime bootstrap validation so `--channel` and `--package` are only
-  accepted for live solves with `--no-lock`.
-- Changed the `conda pronto` plugin adapter to prefer the `pronto` executable
-  installed next to the current Python interpreter before falling back to
-  `PATH`.
-- Updated the rattler dependency stack so current Pixi lockfiles can be read
-  directly.
-- Removed default runtime examples from the documentation landing page so the
-  first screen describes the project boundary instead of implying a bundled
-  distribution.
-- Updated the Pixi test environment to install `conda-pronto` editable and run
-  Python tests against the installed package.
+- `conda-pronto` no longer behaves like a downstream distribution. Downstream
+  projects choose their own binary name, package set, channels, documentation
+  URL, and release channel.
+- Generated runtime `.condarc` files now use the channels stamped into the
+  runtime instead of assuming `conda-forge`.
+- Runtime `--channel` and `--package` flags are now accepted only for live
+  solves with `--no-lock`; lockfile-based builds use the committed lockfile
+  contents.
+- The `conda pronto` adapter now prefers the `pronto` executable installed next
+  to the current Python interpreter before falling back to `PATH`.
+- The GitHub Action now expects committed manifest and lockfile input. It no
+  longer creates or mutates project manifests during CI.
 
 ### Security
 
-- Require SHA256 metadata in runtime locks when creating bundles.
-- Verify cached and newly downloaded bundle archives before staging them.
-- Verify offline bundle archives before installing from a local bundle
-  directory, and reject tampered packages.
-- Verify GitHub artifact attestations for downloaded `pronto`,
-  `pronto-runtime-template`, and `SHA256SUMS` assets before the composite action
-  runs them.
-- Hardened GitHub workflows and the composite action by pinning actions by SHA,
-  using minimal permissions, disabling persisted checkout credentials, avoiding
-  `eval` for action inputs, and gating Codecov token access.
+- Bundle builds now require SHA256 metadata in runtime locks.
+- Cached, downloaded, embedded, and offline package archives are verified before
+  they are staged or installed.
+- The GitHub Action verifies artifact attestations for downloaded `pronto`,
+  `pronto-runtime-template`, and `SHA256SUMS` assets before running them.
+- GitHub workflows and the composite action use pinned actions, minimal
+  permissions, explicit artifact verification, and no shell `eval` for user
+  inputs.
+- Rust advisory, license, dependency-ban, and source policies are enforced with
+  `cargo deny`.
 
-### Verified
+### Removed
 
-- `cargo test --locked --features runtime-template`
-- `cargo clippy --locked --features runtime-template --bins --tests -- -D warnings`
-- `cargo publish --locked --dry-run`
-- `pixi run -e test pytest`
-- `pixi run -e test ruff-check`
-- `pixi run -e test ruff-format-check`
-- `pixi run -e docs docs`
-- `cargo audit --deny warnings`
-- `cargo deny check`
-- `zizmor --persona auditor`
-
-## Split from conda-express (2026-05-28)
-
-`conda-pronto` was split out of `jezdez/conda-express` to own the generic
-builder and runtime foundation for ready-to-run conda bootstrap binaries. The
-installed CLI remains `pronto`.
-
-Moved project areas:
-
-- runtime lock derivation from Pixi environments
-- package exclusion after the solve
-- bundle generation for offline bootstrap
-- embedded-bundle runtime builds
-- staged artifact metadata (`.runtime.lock`, `.packages.txt`, `.info.json`,
-  and `.sha256`)
-- generic GitHub Action and reusable local CLI workflow
-
-Downstream distributions, such as `conda-express`, keep their own package sets,
-binary names, documentation URLs, and release channels.
-
-## Historical conda-express changes
-
-These entries were originally recorded in the `conda-express` changelog before
-the generic builder moved into this repository.
-
-### 0.6.0 (2026-05-06)
-
-- Replaced the large `conda-express` build script with a small script that
-  copies pre-generated lock and bundle inputs into `$OUT_DIR`.
-- Added the internal `cx-build` helper with `prepare`, `payload`, and
-  `configure` subcommands. These concepts became conda-pronto's `lock`, `bundle`,
-  `configure`, and `build` workflow.
-- Added a Pixi runtime environment for the bootstrap package set so Pixi owns
-  dependency solving before the runtime binary is built.
-- Moved exclude filtering from runtime to build time.
-- Updated GitHub Actions to run configure, lock, prepare, and build steps in
-  CI.
-- Added local and CI `sccache` support.
-
-### 0.5.0 (2026-03-30)
-
-- Added offline bootstrap from a local directory of pre-downloaded `.conda` and
-  `.tar.bz2` archives.
-- Added the compressed self-contained `cxz` binary variant. In conda-pronto terms,
-  this is the `embedded` bundle layout with the `z` suffix.
-- Added SHA256 verification for all downloaded package archives used by
-  embedded builds.
-- Added tests for offline mode, external bundle input validation, and embedded
-  bundle bootstrap workflows.
-- Added CI and release workflow support for embedded-bundle binaries.
+- Removed inherited `conda-express` distribution defaults from the generic
+  builder. `conda-pronto` does not ship a default downstream runtime binary.
+- Removed CI behavior that generated temporary Pixi manifests from action
+  inputs.
