@@ -1,4 +1,4 @@
-# Generated Runtime CLI Reference
+# Runtime CLI Reference
 
 Every conda-pronto artifact is a named runtime binary. In this page, `NAME` stands for
 the distribution name passed to `pronto build --name NAME`.
