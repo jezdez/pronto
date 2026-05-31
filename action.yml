@@ -33,7 +33,11 @@ inputs:
     required: false
     default: ""
   install-name:
-    description: "Name used inside the install scheme."
+    description: "Name used inside the install scheme. Overrides [tool.conda-ship].install-name when set."
+    required: false
+    default: ""
+  install-method:
+    description: "Package-manager or installer method stamped into the runtime. Overrides [tool.conda-ship].install-method when set."
     required: false
     default: ""
 
@@ -200,115 +204,18 @@ runs:
         echo "cs_path=${TOOL_DIR}/${CS_ASSET}" >> "$GITHUB_OUTPUT"
         echo "template_path=${TOOL_DIR}/${TEMPLATE_ASSET}" >> "$GITHUB_OUTPUT"
 
-    - name: Validate project input
-      id: project
-      shell: bash
-      env:
-        CONDA_SHIP_LAYOUT: ${{ inputs.layout }}
-        CONDA_SHIP_RUNTIME: ${{ inputs.runtime }}
-        CONDA_SHIP_DELEGATE: ${{ inputs.delegate }}
-        CONDA_SHIP_INSTALL_NAME: ${{ inputs.install-name }}
-        CONDA_SHIP_ROOT: ${{ inputs.root }}
-        CONDA_SHIP_INSTALL_SCHEME: ${{ inputs.install-scheme }}
-      run: |
-        root="${CONDA_SHIP_ROOT:-.}"
-        case "$root" in
-          *$'\n'*|*$'\r'*)
-            echo "Project root must not contain newlines." >&2
-            exit 1
-            ;;
-        esac
-        if [ -n "$CONDA_SHIP_RUNTIME" ] && [[ ! "$CONDA_SHIP_RUNTIME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
-          echo "Invalid runtime name: ${CONDA_SHIP_RUNTIME}" >&2
-          echo "Use ASCII letters, digits, dots, dashes, or underscores, starting with a letter or digit." >&2
-          exit 1
-        fi
-        if [ -n "$CONDA_SHIP_DELEGATE" ] && [[ ! "$CONDA_SHIP_DELEGATE" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
-          echo "Invalid delegate executable name: ${CONDA_SHIP_DELEGATE}" >&2
-          echo "Use ASCII letters, digits, dots, dashes, or underscores, starting with a letter or digit." >&2
-          exit 1
-        fi
-        if [ -n "$CONDA_SHIP_LAYOUT" ]; then
-          case "$CONDA_SHIP_LAYOUT" in
-            online|external|embedded)
-              ;;
-            *)
-              echo "Unsupported layout: ${CONDA_SHIP_LAYOUT}. Use 'online', 'external', or 'embedded'." >&2
-              exit 1
-              ;;
-          esac
-        fi
-        if [ -n "$CONDA_SHIP_INSTALL_SCHEME" ]; then
-          case "$CONDA_SHIP_INSTALL_SCHEME" in
-            conda-home|user-data)
-              ;;
-            *)
-              echo "Unsupported install scheme: ${CONDA_SHIP_INSTALL_SCHEME}. Use 'conda-home' or 'user-data'." >&2
-              exit 1
-              ;;
-          esac
-        fi
-        if [ -n "$CONDA_SHIP_INSTALL_NAME" ]; then
-          if [[ ! "$CONDA_SHIP_INSTALL_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
-            echo "Invalid install name: ${CONDA_SHIP_INSTALL_NAME}" >&2
-            echo "Use ASCII letters, digits, dots, dashes, or underscores, starting with a letter or digit." >&2
-            exit 1
-          fi
-        fi
-        if [ ! -d "$root" ]; then
-          echo "Project root does not exist: ${root}" >&2
-          exit 1
-        fi
-
-        if [ -f "${root}/conda.toml" ]; then
-          if [ ! -f "${root}/conda.lock" ]; then
-            echo "Found ${root}/conda.toml but missing ${root}/conda.lock." >&2
-            echo "Commit a solved lockfile before building release artifacts." >&2
-            exit 1
-          fi
-        elif [ -f "${root}/pixi.toml" ]; then
-          if [ ! -f "${root}/pixi.lock" ]; then
-            echo "Found ${root}/pixi.toml but missing ${root}/pixi.lock." >&2
-            echo "Commit a solved lockfile before building release artifacts." >&2
-            exit 1
-          fi
-        elif [ -f "${root}/pyproject.toml" ]; then
-          if grep -Eq '^[[:space:]]*\[tool\.conda(\]|\.)' "${root}/pyproject.toml"; then
-            if [ ! -f "${root}/conda.lock" ]; then
-              echo "Found ${root}/pyproject.toml with [tool.conda] but missing ${root}/conda.lock." >&2
-              echo "Commit a solved lockfile before building release artifacts." >&2
-              exit 1
-            fi
-          elif grep -Eq '^[[:space:]]*\[tool\.pixi(\]|\.)' "${root}/pyproject.toml"; then
-            if [ ! -f "${root}/pixi.lock" ]; then
-              echo "Found ${root}/pyproject.toml with [tool.pixi] but missing ${root}/pixi.lock." >&2
-              echo "Commit a solved lockfile before building release artifacts." >&2
-              exit 1
-            fi
-          else
-            echo "Found ${root}/pyproject.toml, but it does not contain a [tool.conda] or [tool.pixi] table." >&2
-            echo "Use conda.toml, pixi.toml, or a supported pyproject.toml." >&2
-            exit 1
-          fi
-        else
-          echo "No conda.toml, pixi.toml, or pyproject.toml found in ${root}." >&2
-          echo "Add a project manifest and lockfile before using the conda-ship action." >&2
-          exit 1
-        fi
-
-        echo "root=${root}" >> "$GITHUB_OUTPUT"
-
     - name: Build runtime
       shell: bash
       env:
+        CONDA_SHIP_DELEGATE: ${{ inputs.delegate }}
         CONDA_SHIP_DOCS_URL: ${{ inputs.docs-url }}
+        CONDA_SHIP_INSTALL_METHOD: ${{ inputs.install-method }}
         CONDA_SHIP_INSTALL_NAME: ${{ inputs.install-name }}
+        CONDA_SHIP_INSTALL_SCHEME: ${{ inputs.install-scheme }}
         CONDA_SHIP_LAYOUT: ${{ inputs.layout }}
         CONDA_SHIP_RUNTIME: ${{ inputs.runtime }}
-        CONDA_SHIP_DELEGATE: ${{ inputs.delegate }}
         CS_PATH: ${{ steps.download.outputs.cs_path }}
-        CONDA_SHIP_ROOT: ${{ steps.project.outputs.root }}
-        CONDA_SHIP_INSTALL_SCHEME: ${{ inputs.install-scheme }}
+        CONDA_SHIP_ROOT: ${{ inputs.root }}
         CONDA_SHIP_TARGET: ${{ steps.resolve.outputs.target }}
         TEMPLATE_PATH: ${{ steps.download.outputs.template_path }}
       run: |
@@ -324,23 +231,26 @@ runs:
           --root "$CONDA_SHIP_ROOT"
           --out-dir "$dist_dir"
         )
-        if [ -n "$CONDA_SHIP_DOCS_URL" ]; then
-          build_args+=(--docs-url "$CONDA_SHIP_DOCS_URL")
-        fi
-        if [ -n "$CONDA_SHIP_LAYOUT" ]; then
-          build_args+=(--layout "$CONDA_SHIP_LAYOUT")
-        fi
         if [ -n "$CONDA_SHIP_RUNTIME" ]; then
           build_args+=(--runtime "$CONDA_SHIP_RUNTIME")
         fi
         if [ -n "$CONDA_SHIP_DELEGATE" ]; then
           build_args+=(--delegate "$CONDA_SHIP_DELEGATE")
         fi
+        if [ -n "$CONDA_SHIP_LAYOUT" ]; then
+          build_args+=(--layout "$CONDA_SHIP_LAYOUT")
+        fi
+        if [ -n "$CONDA_SHIP_DOCS_URL" ]; then
+          build_args+=(--docs-url "$CONDA_SHIP_DOCS_URL")
+        fi
         if [ -n "$CONDA_SHIP_INSTALL_SCHEME" ]; then
           build_args+=(--install-scheme "$CONDA_SHIP_INSTALL_SCHEME")
         fi
         if [ -n "$CONDA_SHIP_INSTALL_NAME" ]; then
           build_args+=(--install-name "$CONDA_SHIP_INSTALL_NAME")
+        fi
+        if [ -n "$CONDA_SHIP_INSTALL_METHOD" ]; then
+          build_args+=(--install-method "$CONDA_SHIP_INSTALL_METHOD")
         fi
         "$CS_PATH" "${build_args[@]}" --dry-run
         "$CS_PATH" "${build_args[@]}"

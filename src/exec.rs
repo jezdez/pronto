@@ -10,10 +10,6 @@ use miette::IntoDiagnostic;
 
 use crate::policy;
 
-pub(crate) fn conda_binary(prefix: &Path) -> std::path::PathBuf {
-    executable_in_prefix(prefix, "conda")
-}
-
 pub(crate) fn executable_in_prefix(prefix: &Path, executable: &str) -> std::path::PathBuf {
     let executable = executable_filename(executable);
     if cfg!(windows) {
@@ -277,18 +273,18 @@ mod tests {
 
     #[test]
     #[cfg(not(windows))]
-    fn test_conda_binary_unix() {
+    fn test_executable_in_prefix_conda_unix() {
         assert_eq!(
-            conda_binary(Path::new("/opt/conda")),
+            executable_in_prefix(Path::new("/opt/conda"), "conda"),
             Path::new("/opt/conda/bin/conda")
         );
     }
 
     #[test]
     #[cfg(windows)]
-    fn test_conda_binary_windows() {
+    fn test_executable_in_prefix_conda_windows() {
         assert_eq!(
-            conda_binary(Path::new("C:\\conda")),
+            executable_in_prefix(Path::new("C:\\conda"), "conda"),
             Path::new("C:\\conda\\Scripts\\conda.exe")
         );
     }

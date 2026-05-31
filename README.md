@@ -17,8 +17,8 @@ Artifact layouts:
 - `embedded`: runtime `<runtime>z` with the compressed bundle embedded in one binary.
 
 The CLI builds from a solved downstream project. Packaged builds find the
-installed runtime template automatically; source checkouts can omit
-`--template` while developing conda-ship itself:
+installed runtime template automatically. Use `--template` only for an explicit
+template path, custom packaging, or cross-builds:
 
 ```toml
 [tool.conda-ship]

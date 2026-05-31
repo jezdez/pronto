@@ -15,6 +15,7 @@ binary:
 
 - runtime name, display name, and delegate executable
 - install scheme and install name
+- install method, when configured
 - runtime lock
 - optional compressed package bundle
 - documentation URL
@@ -46,9 +47,9 @@ The template is not a runtime. Running it directly fails with a message that
 points back to `cs build`; only the stamped copy has a runtime name,
 lockfile, package metadata, and install policy.
 
-When developing conda-ship itself from a source checkout, `--template` is
-optional. In that mode, `cs build` compiles the local generic runtime before
-writing the runtime.
+When running from a source checkout, `cs build` still expects either an
+installed template next to `cs`, a `CONDA_SHIP_TEMPLATE` environment variable,
+or an explicit `--template PATH`.
 
 ## What Users See
 

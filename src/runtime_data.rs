@@ -22,14 +22,12 @@ pub struct RuntimeConfig {
     pub channels: Vec<String>,
     #[serde(default)]
     pub packages: Vec<String>,
-    #[serde(default)]
-    pub exclude: Vec<String>,
 }
 
 impl RuntimeConfig {
     #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
-        self.channels.is_empty() && self.packages.is_empty() && self.exclude.is_empty()
+        self.channels.is_empty() && self.packages.is_empty()
     }
 }
 

@@ -41,15 +41,6 @@ Options:
 `--force`
 : Remove an existing install path before bootstrapping again.
 
-`--install-scheme SCHEME`
-: Install with a named install scheme instead of the stamped default. Currently
-  supported: `conda-home`, which installs below `~/.conda/INSTALL_NAME`, and
-  `user-data`, which installs below the platform user data directory. This is
-  mutually exclusive with the global `--path` option.
-
-`--lockfile PATH`
-: Use an external rattler-lock file instead of the stamped runtime lock.
-
 `--bundle DIR`
 : Pre-populate the package cache from a directory containing `.conda` or
   `.tar.bz2` archives. The directory is treated as a flat package archive
@@ -91,7 +82,7 @@ Embedded bundle extraction rejects anything except top-level `.conda` and
 Show runtime and install details.
 
 ```bash
-RUNTIME [--path PATH] status [--install-scheme SCHEME]
+RUNTIME [--path PATH] status
 ```
 
 The output includes the runtime name, runtime version, install path, configured
@@ -124,19 +115,12 @@ Remove the install path and named environments.
 RUNTIME uninstall [OPTIONS]
 ```
 
-Options:
-
-`--install-scheme SCHEME`
-: Remove the install path for a named install scheme instead of the stamped default.
-  Currently supported: `conda-home` and `user-data`. This is mutually exclusive with the
-  global `--path` option.
-
 `-y, --yes`
 : Skip the interactive confirmation prompt.
 
-The command removes the install path, attempts to remove named environments
-cleanly, and prints a hint for removing the runtime through the package manager
-or install method that provided it.
+The command removes the managed install path, including named environments
+below it, and prints a hint for removing the runtime through the package manager
+or install method that provided the runtime binary.
 
 ## `RUNTIME help`
 

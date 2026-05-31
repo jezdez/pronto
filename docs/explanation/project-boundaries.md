@@ -32,7 +32,7 @@ conda-ship owns the reusable build and runtime machinery:
 - deriving a runtime lock from a conda or Pixi source lockfile
 - pruning excluded packages and exclusive dependencies after the solve
 - downloading package archives into compressed bundles
-- copying or building the generic runtime template and stamping distribution data
+- copying the generic runtime template and stamping distribution data
 - staging `online`, `external`, and `embedded` artifact layouts
 - writing artifact metadata: `.runtime.lock`, `.packages.txt`, `.info.json`,
   and `.sha256`
@@ -72,9 +72,9 @@ Homebrew and shell-script installation, Docker images, Python or conda
 distribution wrappers, and release policy for those artifacts.
 
 When conda-express needs runtimes, its workflows call conda-ship from the
-conda-express project root and pass the `cx` runtime name. The `embedded`
-layout stages `cxz`. The package set remains conda-express project input;
-conda-ship does not hard-code those choices. Its own scope page is
+conda-express project root. The conda-express manifest names the `cx` runtime;
+the `embedded` layout stages `cxz`. The package set remains conda-express
+project input; conda-ship does not hard-code those choices. Its own scope page is
 {external+conda-express:doc}`Project scope <scope>`.
 
 ## Relationship To Other Tools

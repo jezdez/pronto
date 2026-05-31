@@ -22,6 +22,7 @@ include = [
   "/README.md",
   "/src/*.rs",
   "/src/bin/*.rs",
+  "/src/bin/cs/*.rs",
   "/src/snapshots/*.snap",
   "/tests/*.rs",
   "/tests/snapshots/*.snap",

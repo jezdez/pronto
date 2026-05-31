@@ -12,7 +12,7 @@ Pin the action to a conda-ship release tag. The action downloads the matching
 `cs` and `cs-runtime-template` release assets, verifies their GitHub
 artifact attestations and release `SHA256SUMS`, and stamps the generated
 runtime. It runs `cs build --dry-run` before the real build so manifest,
-lockfile, naming, template, install scheme, and bundle metadata issues fail
+lockfile, naming, template, install location, and bundle metadata issues fail
 before artifact files are written.
 
 GitHub-hosted runners already include the GitHub CLI used for attestation
@@ -24,8 +24,8 @@ The checked-out repository must contain `conda.toml` plus `conda.lock`,
 `pyproject.toml` with `[tool.conda]` plus `conda.lock`, `pixi.toml` plus
 `pixi.lock`, or `pyproject.toml` with `[tool.pixi]` plus `pixi.lock`. These
 examples assume the manifest contains `[tool.conda-ship].runtime` and
-`[tool.conda-ship].delegate`; pass `runtime` or `delegate` only when CI should
-override those values.
+`[tool.conda-ship].delegate`, unless those values are supplied as action
+inputs.
 
 ```yaml
 jobs:
@@ -62,11 +62,10 @@ steps:
 
 The action does not run a solve, generate a manifest, or refresh a lockfile.
 Update and commit the lockfile before running release builds.
-
-Use `install-scheme` for a named install policy and `install-name` for the name inside
-that install scheme. When neither is set, the action leaves those values to
-`[tool.conda-ship]` and the runtime defaults. With the default `conda-home`
-install scheme, a runtime named `demo` installs below `~/.conda/demo`.
+Release-job metadata such as `runtime`, `delegate`, `docs-url`,
+`install-scheme`, `install-name`, and `install-method` can come from the
+manifest or from action inputs. The action passes those inputs to
+`cs build --dry-run`, so validation still happens in conda-ship.
 
 ## External Bundle Example
 
@@ -109,7 +108,19 @@ runtimes:
 strategy:
   fail-fast: false
   matrix:
-    os: [ubuntu-latest, macos-latest, windows-latest]
+    include:
+      - os: ubuntu-latest
+        layout: online
+        runtime: demo
+        install-method: standalone
+      - os: macos-latest
+        layout: embedded
+        runtime: demo
+        install-method: homebrew
+      - os: windows-latest
+        layout: online
+        runtime: demo
+        install-method: standalone
 
 runs-on: ${{ matrix.os }}
 
@@ -118,6 +129,14 @@ steps:
 
   - uses: jezdez/conda-ship@v0.1.0
     id: cs
+    with:
+      layout: ${{ matrix.layout }}
+      runtime: ${{ matrix.runtime }}
+      delegate: conda
+      docs-url: https://example.com/demo/
+      install-scheme: conda-home
+      install-name: demo
+      install-method: ${{ matrix.install-method }}
 ```
 
 Each job emits an asset name qualified with the runner target triple.

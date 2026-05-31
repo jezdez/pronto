@@ -1,12 +1,11 @@
 //! Subcommand implementations and prefix helpers.
 
-use std::process::{Command, Stdio};
 use std::{env, path::Path};
 
 use miette::{Context, IntoDiagnostic};
 use rattler_conda_types::PrefixRecord;
 
-use crate::cli::{LockSource, Verbosity};
+use crate::cli::Verbosity;
 use crate::config::{
     PrefixMetadata, embedded_config, embedded_lock, read_metadata, write_condarc, write_frozen,
     write_metadata,
@@ -66,15 +65,7 @@ pub(crate) async fn ensure_bootstrapped(prefix: &Path) -> miette::Result<()> {
             "{} No conda installation found. Bootstrapping now...",
             console::style(">>").cyan().bold()
         );
-        bootstrap(
-            prefix,
-            false,
-            LockSource::Embedded,
-            None,
-            false,
-            Verbosity::Quiet,
-        )
-        .await?;
+        bootstrap(prefix, false, None, false, Verbosity::Quiet).await?;
     }
     Ok(())
 }
@@ -121,11 +112,9 @@ pub(crate) fn validate_bootstrap_flags(bundle: &Option<std::path::PathBuf>) -> m
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(crate) async fn bootstrap(
     prefix: &Path,
     force: bool,
-    lock_source: LockSource,
     bundle: Option<std::path::PathBuf>,
     offline: bool,
     verbosity: Verbosity,
@@ -160,7 +149,7 @@ pub(crate) async fn bootstrap(
             console::style(">>").cyan().bold(),
             prefix.display()
         );
-        std::fs::remove_dir_all(prefix).into_diagnostic()?;
+        remove_install_path(prefix)?;
     }
 
     let cfg = embedded_config();
@@ -180,39 +169,25 @@ pub(crate) async fn bootstrap(
         }
     }
 
-    let lock_content = match &lock_source {
-        LockSource::Embedded => {
-            if let Some(lock) = embedded_lock() {
-                if verbosity != Verbosity::Quiet {
-                    eprintln!("   Using embedded lockfile");
-                }
-                Some(lock.to_string())
-            } else {
-                None
-            }
+    let lock_content = if let Some(lock) = embedded_lock() {
+        if verbosity != Verbosity::Quiet {
+            eprintln!("   Using stamped lockfile");
         }
-        LockSource::File(path) => {
-            let content = std::fs::read_to_string(path)
-                .into_diagnostic()
-                .context("failed to read lockfile")?;
-            if verbosity != Verbosity::Quiet {
-                eprintln!("   Using lockfile: {}", path.display());
-            }
-            Some(content)
-        }
+        Some(lock.to_string())
+    } else {
+        None
     };
 
     if let Some(ref bundle_dir) = bundle {
-        let content = lock_content.ok_or_else(|| {
-            miette::miette!("--bundle requires a lockfile (embedded or --lockfile)")
-        })?;
+        let content = lock_content
+            .ok_or_else(|| miette::miette!("--bundle requires a stamped runtime lock"))?;
         if verbosity != Verbosity::Quiet {
             eprintln!("   Bundle:   {}", bundle_dir.display());
         }
         install::from_lockfile_with_bundle(prefix, &content, bundle_dir, offline).await?;
     } else if let Some(embedded_dir) = install::extract_embedded_bundle()? {
-        let content =
-            lock_content.ok_or_else(|| miette::miette!("embedded bundle requires a lockfile"))?;
+        let content = lock_content
+            .ok_or_else(|| miette::miette!("embedded bundle requires a stamped runtime lock"))?;
         if verbosity != Verbosity::Quiet {
             eprintln!("   Bundle:   embedded");
         }
@@ -221,13 +196,12 @@ pub(crate) async fn bootstrap(
         let _ = std::fs::remove_dir_all(&embedded_dir);
         result?;
     } else if offline {
-        let content = lock_content.ok_or_else(|| {
-            miette::miette!("--offline requires a lockfile (embedded or --lockfile)")
-        })?;
+        let content = lock_content
+            .ok_or_else(|| miette::miette!("--offline requires a stamped runtime lock"))?;
         install::from_lockfile_offline(prefix, &content).await?;
     } else {
         let content = lock_content.ok_or_else(|| {
-            miette::miette!("runtime has no stamped lockfile; pass --lockfile or rebuild it")
+            miette::miette!("runtime has no stamped lockfile; rebuild it with `cs build`")
         })?;
         install::from_lockfile(prefix, &content).await?;
     }
@@ -376,61 +350,6 @@ pub(crate) fn uninstall(prefix: &Path, yes: bool, verbosity: Verbosity) -> miett
         }
     }
 
-    if !named_envs.is_empty() {
-        let conda = crate::exec::conda_binary(prefix);
-        for env_name in &named_envs {
-            if verbosity != Verbosity::Quiet {
-                eprintln!(
-                    "{} Removing environment: {}",
-                    console::style(">>").cyan().bold(),
-                    env_name
-                );
-            }
-            let mut command = Command::new(&conda);
-            command.args(["remove", "--all", "-n", env_name, "-y", "--json"]);
-            exec::apply_delegate_environment(&mut command, prefix)?;
-            let output = command
-                .stdout(Stdio::piped())
-                .stderr(Stdio::null())
-                .output();
-            match output {
-                Ok(out) if out.status.success() => {
-                    if verbosity == Verbosity::Verbose
-                        && let Ok(json) = serde_json::from_slice::<serde_json::Value>(&out.stdout)
-                        && let Some(actions) = json
-                            .get("actions")
-                            .and_then(|a| a.get("UNLINK"))
-                            .and_then(|u| u.as_array())
-                    {
-                        for pkg in actions {
-                            if let Some(name) = pkg.get("name").and_then(|n| n.as_str()) {
-                                let version =
-                                    pkg.get("version").and_then(|v| v.as_str()).unwrap_or("?");
-                                eprintln!("     - {name} {version}");
-                            }
-                        }
-                    }
-                }
-                Ok(out) => {
-                    eprintln!(
-                        "{} conda exited with {} for {} (will force-remove it)",
-                        console::style("!").yellow().bold(),
-                        out.status,
-                        env_name
-                    );
-                }
-                Err(e) => {
-                    eprintln!(
-                        "{} Failed to run conda for {}: {} (will force-remove it)",
-                        console::style("!").yellow().bold(),
-                        env_name,
-                        e
-                    );
-                }
-            }
-        }
-    }
-
     reject_dangerous_prefix(prefix)?;
 
     if verbosity != Verbosity::Quiet {
@@ -440,9 +359,7 @@ pub(crate) fn uninstall(prefix: &Path, yes: bool, verbosity: Verbosity) -> miett
             prefix.display()
         );
     }
-    std::fs::remove_dir_all(prefix)
-        .into_diagnostic()
-        .context("failed to remove install path")?;
+    remove_install_path(prefix)?;
 
     if let Some(ref bin) = runtime_binary {
         let hint = match crate::config::install_method() {
@@ -466,6 +383,60 @@ pub(crate) fn uninstall(prefix: &Path, yes: bool, verbosity: Verbosity) -> miett
         );
     }
 
+    Ok(())
+}
+
+fn remove_install_path(prefix: &Path) -> miette::Result<()> {
+    match std::fs::remove_dir_all(prefix) {
+        Ok(()) => Ok(()),
+        Err(err) => {
+            #[cfg(windows)]
+            {
+                clear_readonly_recursive(prefix)?;
+                std::fs::remove_dir_all(prefix)
+                    .into_diagnostic()
+                    .context("failed to remove install path")
+            }
+            #[cfg(not(windows))]
+            {
+                Err(err)
+                    .into_diagnostic()
+                    .context("failed to remove install path")
+            }
+        }
+    }
+}
+
+#[cfg(windows)]
+fn clear_readonly_recursive(path: &Path) -> miette::Result<()> {
+    if !path.exists() {
+        return Ok(());
+    }
+
+    let metadata = std::fs::symlink_metadata(path)
+        .into_diagnostic()
+        .with_context(|| format!("failed to inspect {}", path.display()))?;
+    if metadata.file_type().is_symlink() {
+        return Ok(());
+    }
+
+    if metadata.is_dir() {
+        for entry in std::fs::read_dir(path)
+            .into_diagnostic()
+            .with_context(|| format!("failed to read {}", path.display()))?
+        {
+            let entry = entry.into_diagnostic()?;
+            clear_readonly_recursive(&entry.path())?;
+        }
+    }
+
+    let mut permissions = metadata.permissions();
+    if permissions.readonly() {
+        permissions.set_readonly(false);
+        std::fs::set_permissions(path, permissions)
+            .into_diagnostic()
+            .with_context(|| format!("failed to clear read-only bit on {}", path.display()))?;
+    }
     Ok(())
 }
 
@@ -619,6 +590,25 @@ mod tests {
             result.is_ok(),
             "uninstall on empty prefix should succeed with a no-op"
         );
+    }
+
+    #[test]
+    fn test_uninstall_removes_managed_prefix_without_conda_binary() {
+        let tmp = TempDir::new().unwrap();
+        let prefix = tmp.path().join("runtime");
+        std::fs::create_dir_all(prefix.join("conda-meta")).unwrap();
+        std::fs::create_dir_all(prefix.join("envs").join("demo").join("conda-meta")).unwrap();
+        crate::config::write_metadata(
+            &prefix,
+            &["conda-forge".to_string()],
+            &["conda".to_string()],
+        )
+        .unwrap();
+
+        let result = uninstall(&prefix, true, Verbosity::Quiet);
+
+        assert!(result.is_ok(), "uninstall should remove prefix directly");
+        assert!(!prefix.exists(), "managed install path should be removed");
     }
 
     #[test]

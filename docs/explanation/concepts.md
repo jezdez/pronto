@@ -45,8 +45,7 @@ distribution. During `cs build`, the builder copies a generic runtime
 template under the resolved runtime name and stamps the copy with the runtime
 name, delegate, install scheme, install name, metadata filename, environment
 variable names, runtime lock, and optional bundle. The stamped copy is the runtime.
-Released builds use prebuilt template assets; source checkouts can build the
-template locally as a development fallback.
+Released builds and packaged local builds use prebuilt template assets.
 
 ## Runtime Lock
 
@@ -56,13 +55,14 @@ runtime artifact and stages a copy next to the output binary. It is not a second
 checked-in project lockfile.
 
 `cs inspect` derives the same runtime lock without writing files, so it is
-the local preflight command. `cs build`, `cs bundle`, and `cs run`
-derive the lock as part of their normal work.
+the local preflight command. `cs build` and `cs run` derive the lock as part
+of their normal work.
 
 The generated runtime can install from:
 
 - the stamped lockfile and network package downloads
-- an external lockfile passed with `--lockfile`
+- the stamped lockfile and an external package bundle
+- the stamped lockfile and an embedded package bundle
 
 ## Bundles
 

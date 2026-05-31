@@ -17,7 +17,7 @@ plus `conda.lock`, `pixi.toml` plus `pixi.lock`, or `pyproject.toml` with
 `[tool.pixi]` plus `pixi.lock`. When the manifest or matching lockfile is
 missing, the action fails instead of generating or solving project configuration
 in CI. This minimal example assumes the manifest contains
-`[tool.conda-ship].runtime`.
+`[tool.conda-ship].runtime` and `[tool.conda-ship].delegate`.
 
 ```yaml
 - uses: actions/checkout@v4
@@ -29,14 +29,12 @@ in CI. This minimal example assumes the manifest contains
 ## Inputs
 
 `runtime`
-: Runtime name override. Set this when the manifest does not contain
-  `[tool.conda-ship].runtime` or when a release job intentionally overrides it.
-  For example, conda-express uses `cx`; the `embedded` layout stages `cxz`.
+: Runtime name override. Set this when the release job intentionally stamps a
+  different runtime name than `[tool.conda-ship].runtime`.
 
 `delegate`
-: Delegate executable override. Set this when the manifest does not contain
-  `[tool.conda-ship].delegate` or when a release job intentionally overrides
-  which executable receives pass-through arguments.
+: Delegate executable override. Set this when the release job intentionally
+  changes which executable receives pass-through arguments.
 
 `root`
 : Project root containing `conda.toml`/`conda.lock`, `pixi.toml`/`pixi.lock`,
@@ -51,18 +49,23 @@ in CI. This minimal example assumes the manifest contains
   artifacts carry package archives inside the runtime and use the `z` suffix.
 
 `docs-url`
-: Documentation URL stamped into the generated runtime help output.
+: Documentation URL stamped into generated runtime help output.
 
 `install-scheme`
 : Install scheme stamped into the generated runtime. Supported values are
-  `conda-home`, which installs below `~/.conda/INSTALL_NAME`, and `user-data`,
-  which installs below the platform user data directory. When `install-scheme`
-  is not set, the action leaves install scheme selection to `[tool.conda-ship]`
-  and the runtime default.
+  `conda-home` and `user-data`.
 
 `install-name`
 : Name used inside the install scheme. When omitted, `cs` uses
   `[tool.conda-ship].install-name` or the resolved runtime name.
+
+`install-method`
+: Package-manager or installer method stamped into the runtime for uninstall
+  guidance.
+
+The action does not duplicate `cs build` validation in shell. It passes
+non-empty inputs to `cs build --dry-run` and then to `cs build`; invalid values
+fail in the builder.
 
 ## Outputs
 

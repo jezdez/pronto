@@ -6,7 +6,6 @@ use std::path::PathBuf;
 use clap::{CommandFactory, FromArgMatches, Parser};
 
 use crate::policy;
-use crate::runtime_data::InstallScheme;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Verbosity {
@@ -124,14 +123,6 @@ pub enum Command {
         #[clap(long)]
         force: bool,
 
-        /// Install scheme to use instead of the stamped default
-        #[clap(long = "install-scheme", value_enum)]
-        install_scheme: Option<InstallScheme>,
-
-        /// Use an external lockfile instead of the embedded one
-        #[clap(long)]
-        lockfile: Option<PathBuf>,
-
         /// Directory containing pre-downloaded .conda / .tar.bz2 package archives
         /// for offline installation
         #[clap(long)]
@@ -143,11 +134,7 @@ pub enum Command {
     },
 
     /// Print runtime status (install path, channels, packages)
-    Status {
-        /// Install scheme to use instead of the stamped default
-        #[clap(long = "install-scheme", value_enum)]
-        install_scheme: Option<InstallScheme>,
-    },
+    Status,
 
     /// Activate an environment via subshell (alias for conda spawn)
     Shell {
@@ -161,10 +148,6 @@ pub enum Command {
 
     /// Uninstall this runtime: remove the install path and environments
     Uninstall {
-        /// Install scheme to use instead of the stamped default
-        #[clap(long = "install-scheme", value_enum)]
-        install_scheme: Option<InstallScheme>,
-
         /// Skip confirmation prompt
         #[clap(long, short)]
         yes: bool,
@@ -175,11 +158,6 @@ pub enum Command {
 
     #[clap(external_subcommand)]
     Passthrough(Vec<OsString>),
-}
-
-pub enum LockSource {
-    Embedded,
-    File(PathBuf),
 }
 
 #[cfg(test)]
@@ -196,8 +174,6 @@ mod tests {
             cli.command,
             Some(Command::Bootstrap {
                 force: false,
-                install_scheme: None,
-                lockfile: None,
                 bundle: None,
                 offline: false,
             })
@@ -212,46 +188,9 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_bootstrap_install_scheme() {
-        let cli = Cli::parse_from([
-            "conda-ship-runtime",
-            "bootstrap",
-            "--install-scheme",
-            "user-data",
-        ]);
-        assert_matches!(
-            cli.command,
-            Some(Command::Bootstrap {
-                install_scheme: Some(InstallScheme::UserData),
-                ..
-            })
-        );
-    }
-
-    #[test]
-    fn test_parse_bootstrap_lockfile() {
-        let cli = Cli::parse_from([
-            "conda-ship-runtime",
-            "bootstrap",
-            "--lockfile",
-            "/tmp/my.lock",
-        ]);
-        assert_matches!(
-            cli.command,
-            Some(Command::Bootstrap { lockfile: Some(ref p), .. })
-                if p == std::path::Path::new("/tmp/my.lock")
-        );
-    }
-
-    #[test]
     fn test_parse_status() {
         let cli = Cli::parse_from(["conda-ship-runtime", "status"]);
-        assert_matches!(
-            cli.command,
-            Some(Command::Status {
-                install_scheme: None
-            })
-        );
+        assert_matches!(cli.command, Some(Command::Status));
     }
 
     #[test]
@@ -266,7 +205,7 @@ mod tests {
             cli.path.as_deref(),
             Some(std::path::Path::new("/opt/conda-ship-runtime"))
         );
-        assert_matches!(cli.command, Some(Command::Status { .. }));
+        assert_matches!(cli.command, Some(Command::Status));
     }
 
     #[test]
@@ -306,13 +245,7 @@ mod tests {
     #[test]
     fn test_parse_uninstall_yes() {
         let cli = Cli::parse_from(["conda-ship-runtime", "uninstall", "--yes"]);
-        assert_matches!(
-            cli.command,
-            Some(Command::Uninstall {
-                yes: true,
-                install_scheme: None,
-            })
-        );
+        assert_matches!(cli.command, Some(Command::Uninstall { yes: true }));
     }
 
     #[test]

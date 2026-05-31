@@ -11,8 +11,8 @@ owned by your distribution.
 
 The manifest examples below describe the build input conda-ship consumes.
 Packaged CLI builds find the runtime template installed next to `cs`
-automatically. Source checkouts can omit `--template` while changing
-conda-ship itself; that fallback builds the template locally.
+automatically. Source checkouts need either a packaged install that includes
+`cs-runtime-template` or an explicit `--template` path.
 
 ## Choose A Runtime Name
 
@@ -78,6 +78,22 @@ runtime below the platform user data directory, such as
 `~/Library/Application Support/conda/INSTALL_NAME` on macOS, and
 `%LOCALAPPDATA%\\conda\\INSTALL_NAME` on Windows.
 
+If a downstream package manager owns the runtime binary, set
+`install-method` in the manifest or pass it from the release job. The generated
+runtime uses that value only after `uninstall`, when it tells users how to
+remove the runtime binary itself:
+
+```toml
+[tool.conda-ship]
+runtime = "demo"
+delegate = "conda"
+install-method = "homebrew"
+```
+
+For matrix builds that produce the same runtime for different distribution
+channels, use `cs build --install-method METHOD` or the GitHub Action
+`install-method` input.
+
 ## Choose Runtime Packages
 
 A conda-ship runtime must include:
@@ -124,6 +140,7 @@ exclude = ["conda-libmamba-solver"]
 docs-url = "https://example.com/demo/"
 install-scheme = "conda-home"
 install-name = "demo"
+install-method = "homebrew"
 ```
 
 Then refresh the source lockfile with
@@ -220,7 +237,6 @@ at that project root:
   id: cs
   with:
     root: .
-    docs-url: "https://example.com/demo/"
 ```
 
 The action does not run `conda workspace lock`, `pixi lock`, or any other solve

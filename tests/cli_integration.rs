@@ -344,9 +344,9 @@ fn test_runtime_offline_env_var_parsing(#[case] value: &str, #[case] expect_offl
     ]);
 
     if expect_offline {
-        cmd.assert()
-            .failure()
-            .stderr(predicate::str::contains("--offline requires a lockfile"));
+        cmd.assert().failure().stderr(predicate::str::contains(
+            "--offline requires a stamped runtime lock",
+        ));
     } else {
         cmd.assert()
             .failure()

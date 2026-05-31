@@ -20,11 +20,13 @@ integration.
   documentation URL, and release channel.
 - Downstream projects can configure the generated runtime's install location
   with an install scheme and install name.
-- Built-in install schemes are `conda` for `~/.conda/INSTALL_NAME` and `data`
-  for the platform user data directory.
+- Built-in install schemes are `conda-home` for `~/.conda/INSTALL_NAME` and
+  `user-data` for the platform user data directory.
 - Runtime metadata protects bootstrapped prefixes from accidental overwrite or
   removal by the wrong generated runtime, and malformed runtime metadata is
   rejected before use.
+- Generated runtime uninstall removes the managed prefix directly and uses the
+  stamped install method to print a package-manager hint for the runtime binary.
 - Generated runtimes also accept a global `--path` option for local override
   workflows where the default install location is not appropriate.
 - `cs-runtime-template`, the generic runtime template used for generated
@@ -35,15 +37,16 @@ integration.
 - Packaged `cs` builds discover an installed `cs-runtime-template`
   automatically; `--template` remains available for explicit template paths,
   custom packaging, and cross-builds.
-- `cs build` can read `command` and `layout` from `[tool.conda-ship]`; CLI
-  flags remain available as release-job overrides.
+- `cs build` can read runtime name, delegate executable, layout, install
+  location, install method, and documentation URL from `[tool.conda-ship]`,
+  with CLI and GitHub Action overrides for release matrices.
 - The `online` layout builds a runtime that downloads packages during bootstrap.
 - `cs build --layout external` stages a runtime plus a separate compressed
   package bundle.
 - `cs build --layout embedded` stages a runtime with the compressed package
   bundle inside the binary.
-- `cs build --dry-run` and `cs bundle --dry-run` validate planned
-  artifact work without compiling, downloading, stamping, or writing files.
+- `cs build --dry-run` validates planned artifact work without downloading,
+  stamping, or writing files.
 - Package exclusion after lockfile resolution, so downstream distributions can
   trim packages from a solved environment before building a runtime.
 - Package and channel intent comes from the selected manifest environment and
@@ -51,8 +54,9 @@ integration.
 - Build validation requires the selected runtime environment to contain `conda`,
   `conda-rattler-solver`, and `conda-spawn`, matching the generated runtime CLI.
 - Generated runtime `.condarc` files use the channels stamped into the runtime lock.
-- Generated runtimes bootstrap from the stamped runtime lock by default, or from
-  an explicit lockfile passed with `--lockfile`.
+- Generated runtimes bootstrap from the stamped runtime lock. External and
+  embedded bundles provide package archives for offline bootstrap without
+  replacing the lock.
 - Default builds use Rustls with the `ring` provider so release builds do not
   depend on platform OpenSSL or AWS-LC. The `native-tls` feature remains
   available for downstream builds that want platform TLS explicitly.

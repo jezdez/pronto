@@ -11,9 +11,9 @@ normal build is:
 cs build
 ```
 
-When developing conda-ship itself from a source checkout, you can omit
-`--template`. In that mode `cs build` builds the generic
-`conda-ship-runtime` target from the checkout before stamping it.
+Source checkouts do not build a runtime template implicitly. Install
+conda-ship from a package that includes `cs-runtime-template`, or pass
+`--template` with an explicit prebuilt template.
 
 If you are changing a downstream distribution such as conda-express, keep the
 package-set decision in that downstream project, then reproduce the build with
@@ -91,9 +91,9 @@ cs run \
 
 Everything after `--` is passed to the generated runtime.
 
-## Cross-Compile With A Rust Target
+## Build For Another Target
 
-Pass both the Rust target triple and an artifact label:
+Pass a target triple, an artifact label, and a matching prebuilt template:
 
 ```bash
 cs build \

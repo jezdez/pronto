@@ -14,7 +14,6 @@ sccache = ">=0.10"
 RUSTC_WRAPPER = "sccache"
 
 [tasks]
-bundle = "cargo run -p conda-ship -- bundle"
 build = "cargo build --release --bin cs"
 build-debug = "cargo build --bin cs"
 check-lock = "cargo run -p conda-ship -- inspect --json > /dev/null"

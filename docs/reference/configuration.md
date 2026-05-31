@@ -12,10 +12,9 @@ Downstream distributions maintain these values in their own project manifest.
 conda-ship treats the values as build input; it does not define a universal
 conda distribution.
 
-`cs inspect`, `cs bundle`, `cs build`, and `cs run` can read
-either manifest/lockfile pair. Packaged builds find the installed runtime
-template automatically, so local projects do not need a conda-ship source
-checkout.
+`cs inspect`, `cs build`, and `cs run` can read either manifest/lockfile pair.
+Packaged builds find the installed runtime template automatically, so local
+projects do not need a conda-ship source checkout.
 
 ## Manifest Discovery
 
@@ -40,7 +39,7 @@ manifest.
 
 `conda.lock` and `pixi.lock` are source lockfiles owned by their respective
 workspace tools. conda-ship derives a runtime lock from that source lockfile
-while inspecting, building, bundling, or smoke-testing a runtime.
+while inspecting, building, or smoke-testing a runtime.
 
 ## Source Environment
 
@@ -83,6 +82,7 @@ exclude = ["conda-libmamba-solver"]
 docs-url = "https://example.com/demo/"
 install-scheme = "conda-home"
 install-name = "demo"
+install-method = "homebrew"
 ```
 
 `runtime`
@@ -110,8 +110,7 @@ install-name = "demo"
   used only by excluded packages.
 
 `docs-url`
-: Documentation URL stamped into generated runtime help output. The GitHub
-  Action also exposes this as the `docs-url` input.
+: Documentation URL stamped into generated runtime help output.
 
 `install-scheme`
 : Install scheme stamped into the generated runtime. Supported values are
@@ -127,6 +126,14 @@ install-name = "demo"
   Choose a product-specific install name. conda-ship does not reserve names
   under `~/.conda`; it relies on runtime metadata to avoid overwriting prefixes
   owned by other tools.
+
+`install-method`
+: Optional package-manager hint stamped into the generated runtime. `uninstall`
+  uses it to tell users how to remove the runtime binary after the managed
+  prefix has been removed. Known values such as `homebrew` get a concrete
+  command; other values are printed as informational text. Release workflows
+  can override this with `cs build --install-method METHOD` or the GitHub
+  Action `install-method` input.
 
 Generated runtimes write ownership metadata into every bootstrapped prefix.
 That metadata records the schema version, display name, install name, and
@@ -150,6 +157,7 @@ URLs from the source lockfile environment into generated runtime metadata.
 - display name: `RUNTIME`
 - install scheme: `conda-home`, or the configured `install-scheme`
 - install name: `RUNTIME`, or the configured `install-name`
+- install method: the configured `install-method`, when present
 - metadata file: `.RUNTIME.json`
 - bundle environment variable: uppercased `RUNTIME` plus `_BUNDLE`
 - offline environment variable: uppercased `RUNTIME` plus `_OFFLINE`

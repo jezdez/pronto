@@ -7,14 +7,12 @@ The builder CLI covers the core local workflow:
 
 - `cs inspect`: preflight the selected manifest, lockfile, source
   environment, exclusions, and package set
-- `cs bundle`: download package archives into a compressed bundle
 - `cs build`: stage an `online`, `external`, or `embedded` runtime
 - `cs run`: build and execute a local runtime for smoke testing
 
 Every staged build writes the runtime plus artifact metadata: the runtime
 lock, a package list, an info JSON file, and SHA256 checksums.
-`cs build --dry-run` and `cs bundle --dry-run` validate planned work
-without writing files.
+`cs build --dry-run` validates planned artifact work without writing files.
 
 Generic runtime behavior lives in `cs`; opinionated package sets and
 distribution defaults belong in downstream projects.

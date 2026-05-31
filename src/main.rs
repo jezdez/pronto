@@ -13,7 +13,7 @@ mod policy;
 mod runtime_data;
 mod tls;
 
-use cli::{Cli, Command, LockSource};
+use cli::{Cli, Command};
 use commands::{
     bootstrap, ensure_bootstrapped, is_bootstrapped, print_disabled_init,
     print_disabled_shell_command, require_managed_prefix, status, uninstall,
@@ -49,12 +49,10 @@ async fn async_main() -> miette::Result<()> {
     match cli.command {
         Some(Command::Bootstrap {
             force,
-            install_scheme,
-            lockfile,
             bundle,
             offline,
         }) => {
-            let prefix = resolve_install_path(install_scheme, path)?;
+            let prefix = resolve_install_path(path)?;
             let bundle = bundle.or_else(|| {
                 env::var(policy::bundle_env_var())
                     .ok()
@@ -69,27 +67,18 @@ async fn async_main() -> miette::Result<()> {
 
             validate_bootstrap_flags(&bundle)?;
 
-            let lock_source = if let Some(path) = lockfile {
-                LockSource::File(path)
-            } else {
-                LockSource::Embedded
-            };
-
-            return bootstrap(&prefix, force, lock_source, bundle, offline, verbosity).await;
+            return bootstrap(&prefix, force, bundle, offline, verbosity).await;
         }
-        Some(Command::Status { install_scheme }) => {
-            let prefix = resolve_install_path(install_scheme, path)?;
+        Some(Command::Status) => {
+            let prefix = resolve_install_path(path)?;
             return status(&prefix);
         }
-        Some(Command::Uninstall {
-            install_scheme,
-            yes,
-        }) => {
-            let prefix = resolve_install_path(install_scheme, path)?;
+        Some(Command::Uninstall { yes }) => {
+            let prefix = resolve_install_path(path)?;
             return uninstall(&prefix, yes, verbosity);
         }
         Some(Command::Shell { env, args }) => {
-            let prefix = resolve_install_path(None, path)?;
+            let prefix = resolve_install_path(path)?;
             ensure_bootstrapped(&prefix).await?;
             let mut conda_args = vec!["spawn".to_string()];
             if let Some(ref name) = env {
@@ -107,7 +96,7 @@ async fn async_main() -> miette::Result<()> {
             Cli::parse_runtime_from([policy::runtime_name(), "--help"]);
         }
         Some(Command::Passthrough(args)) => {
-            let prefix = resolve_install_path(None, path)?;
+            let prefix = resolve_install_path(path)?;
             let delegate_args: Vec<String> = args
                 .iter()
                 .map(|arg| arg.to_string_lossy().into_owned())
@@ -137,7 +126,7 @@ async fn async_main() -> miette::Result<()> {
             );
         }
         None => {
-            let prefix = resolve_install_path(None, path)?;
+            let prefix = resolve_install_path(path)?;
             if !is_bootstrapped(&prefix) {
                 eprintln!(
                     "{} No conda installation found. Run `{} bootstrap` first.",
@@ -153,19 +142,9 @@ async fn async_main() -> miette::Result<()> {
     Ok(())
 }
 
-fn resolve_install_path(
-    install_scheme: Option<runtime_data::InstallScheme>,
-    path: Option<&std::path::PathBuf>,
-) -> miette::Result<std::path::PathBuf> {
+fn resolve_install_path(path: Option<&std::path::PathBuf>) -> miette::Result<std::path::PathBuf> {
     if let Some(path) = path {
-        if install_scheme.is_some() {
-            return Err(miette::miette!(
-                "--install-scheme and --path are mutually exclusive install location options"
-            ));
-        }
         policy::expand_install_path(path)
-    } else if let Some(install_scheme) = install_scheme {
-        policy::install_path_for_scheme(install_scheme, policy::install_name())
     } else {
         policy::default_install_path()
     }
@@ -179,8 +158,7 @@ fn ensure_stamped_runtime() -> miette::Result<()> {
     }
 
     Err(miette::miette!(
-        "{} is a runtime template, not a runnable conda runtime. Build a stamped runtime with `cs build --template {}`.",
-        policy::display_name(),
+        "{} is a runtime template, not a runnable conda runtime. Build a stamped runtime with `cs build`.",
         policy::display_name(),
     ))
 }
