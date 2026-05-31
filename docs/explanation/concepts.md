@@ -66,7 +66,9 @@ The generated runtime can install from:
 
 ## Bundles
 
-Bundles contain downloaded conda package archives.
+Bundles contain downloaded conda package archives. They are not conda channel
+mirrors; conda-ship already has the channel and package records in the runtime
+lock.
 
 The `external` layout pairs a runtime with `RUNTIME.bundle.tar.zst`. The
 `embedded` layout appends `z` to the runtime name and includes the compressed
@@ -74,3 +76,7 @@ bundle inside the runtime.
 
 An embedded runtime automatically uses its bundled archives during
 bootstrap. An explicit `--bundle` can still override that bundle.
+
+The bundle format is intentionally narrow. conda-ship writes top-level `.conda`
+and `.tar.bz2` files, then verifies them against the lockfile at install time.
+Embedded bundles reject nested paths and links before extraction.

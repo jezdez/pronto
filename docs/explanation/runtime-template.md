@@ -38,7 +38,8 @@ cs-runtime-template-x86_64-pc-windows-msvc.exe
 
 You usually only see those names when wiring a packaging job. The GitHub Action
 downloads the matching template automatically. A packaged `cs` CLI looks for
-an installed `cs-runtime-template` automatically; `--template PATH` is an
+an installed `cs-runtime-template` next to the `cs` executable; it does not
+search arbitrary `PATH` entries for a template. `--template PATH` is an
 override for custom packaging or cross-builds.
 
 The template is not a runtime. Running it directly fails with a message that

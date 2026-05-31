@@ -3,8 +3,9 @@
 Use local builds while iterating on runtime package sets, channel choices, or
 conda-ship runtime behavior.
 
-Packaged local builds find the installed runtime template automatically. When
-your manifest contains `[tool.conda-ship].runtime`, a normal build is:
+Packaged local builds find the runtime template installed next to `cs`
+automatically. When your manifest contains `[tool.conda-ship].runtime`, a
+normal build is:
 
 ```bash
 cs build
@@ -76,7 +77,8 @@ cs build \
 ```
 
 Pass `--template` when you need an explicit release template asset, custom
-packaging path, or cross-build template.
+packaging path, or cross-build template. conda-ship does not search `PATH` for
+templates.
 
 ## Run A Smoke Test
 

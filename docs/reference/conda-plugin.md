@@ -15,9 +15,9 @@ conda ship build
 arguments. It is not a separate builder and it does not make conda-ship part
 of conda itself.
 
-Packaged builds find the installed runtime template automatically. Source
-checkouts can omit `--template` while developing conda-ship itself; that
-fallback builds the template locally.
+Packaged builds find the runtime template installed next to `cs`
+automatically. Source checkouts can omit `--template` while developing
+conda-ship itself; that fallback builds the template locally.
 
 ## Packaging Details
 

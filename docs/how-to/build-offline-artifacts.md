@@ -50,6 +50,10 @@ tar -I zstd -xf demo.bundle.tar.zst -C /opt/demo-bundle
 demo --path /opt/demo bootstrap --bundle /opt/demo-bundle --offline
 ```
 
+Pass the directory that contains the package archive files themselves. A bundle
+directory is not a conda channel mirror; conda-ship looks for top-level `.conda`
+and `.tar.bz2` files named in the runtime lock.
+
 conda-ship also stamps a runtime-specific bundle environment variable into the
 runtime. For a runtime named `demo`, that variable is `DEMO_BUNDLE`.
 
@@ -64,6 +68,10 @@ demoz --path /opt/demo bootstrap
 The runtime extracts the compressed package archives to a temporary directory
 during bootstrap and installs from that extracted bundle without network
 access.
+
+Embedded bundle extraction is deliberately narrow. The embedded tar archive may
+only contain top-level package archive files. Nested paths, directory entries,
+symbolic links, hard links, and non-package files are rejected before install.
 
 An explicit `--bundle` still takes priority over the embedded bundle. Use that
 override to test a replacement package set without rebuilding the binary.

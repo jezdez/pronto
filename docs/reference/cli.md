@@ -8,10 +8,10 @@ runtimes, see {doc}`runtime-cli`.
 The `conda-ship` package can also make `conda ship` available as a
 conda-style shortcut for this CLI. See {doc}`conda-plugin`.
 
-Packaged `cs` builds find the installed runtime template automatically.
-Pass `--template` only when you need to override that template, use an explicit
-release asset, or cross-build for another target. Source checkouts can omit
-that option while developing conda-ship itself; in that mode `cs build`
+Packaged `cs` builds find the installed runtime template next to the `cs`
+executable. Pass `--template` only when you need to override that template, use
+an explicit release asset, or cross-build for another target. Source checkouts
+can omit that option while developing conda-ship itself; in that mode `cs build`
 compiles the internal `conda-ship-runtime` target before stamping the staged
 artifact.
 
@@ -78,8 +78,8 @@ Options:
   the staged `.exe` suffix for Windows artifacts when a template is supplied.
   Path-like custom target specifications are not supported here.
 - `--template PATH`: prebuilt generic runtime template binary to copy and
-  stamp. When omitted, packaged builds use the installed template, while source
-  checkouts compile `conda-ship-runtime` from `--root`.
+  stamp. When omitted, packaged builds use the template installed next to `cs`,
+  while source checkouts compile `conda-ship-runtime` from `--root`.
 - `--docs-url URL`: documentation URL stamped into runtime help output.
 - `--install-scheme SCHEME`: install scheme stamped into the runtime. Currently
   supported: `conda-home`, which installs below `~/.conda/INSTALL_NAME`, and
@@ -114,8 +114,8 @@ Options:
   When omitted, `cs` uses `[tool.conda-ship].layout` or `online`.
 - `--platform PLATFORM`: choose the conda platform for metadata and bundles.
 - `--template PATH`: prebuilt generic runtime template binary to copy and
-  stamp. When omitted, packaged builds use the installed template, while source
-  checkouts compile `conda-ship-runtime` from `--root`.
+  stamp. When omitted, packaged builds use the template installed next to `cs`,
+  while source checkouts compile `conda-ship-runtime` from `--root`.
 - `--docs-url URL`: documentation URL stamped into runtime help output.
 - `--install-scheme SCHEME`: install scheme stamped into the runtime. Currently
   supported: `conda-home` and `user-data`.

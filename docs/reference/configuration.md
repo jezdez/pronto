@@ -128,6 +128,13 @@ install-name = "demo"
   under `~/.conda`; it relies on runtime metadata to avoid overwriting prefixes
   owned by other tools.
 
+Generated runtimes write ownership metadata into every bootstrapped prefix.
+That metadata records the schema version, display name, install name, and
+metadata filename expected by the runtime. `status`, `bootstrap --force`,
+`uninstall`, and pass-through commands refuse to operate on an existing conda
+prefix when that ownership metadata is missing, invalid, or belongs to another
+stamped runtime.
+
 Package and channel intent belongs in the selected source environment, not in
 `[tool.conda-ship]`. conda-ship records the resolved package names and channel
 URLs from the source lockfile environment into generated runtime metadata.
@@ -146,6 +153,10 @@ URLs from the source lockfile environment into generated runtime metadata.
 - metadata file: `.RUNTIME.json`
 - bundle environment variable: uppercased `RUNTIME` plus `_BUNDLE`
 - offline environment variable: uppercased `RUNTIME` plus `_OFFLINE`
+
+At bootstrap time, the generated runtime writes a separate prefix metadata file
+inside the managed prefix. That file is used for ownership checks before later
+operations touch the prefix.
 
 Non-alphanumeric characters in environment variable names become underscores.
 

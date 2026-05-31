@@ -52,7 +52,8 @@ Options:
 
 `--bundle DIR`
 : Pre-populate the package cache from a directory containing `.conda` or
-  `.tar.bz2` archives.
+  `.tar.bz2` archives. The directory is treated as a flat package archive
+  bundle, not as a conda channel mirror.
 
 `--offline`
 : Disable network access. Packages must be available from the local cache, an
@@ -82,6 +83,8 @@ RUNTIMEz bootstrap
 ```
 
 An explicit `--bundle` still takes priority over the embedded bundle.
+Embedded bundle extraction rejects anything except top-level `.conda` and
+`.tar.bz2` package archive files.
 
 ## `RUNTIME status`
 
@@ -132,9 +135,8 @@ Options:
 : Skip the interactive confirmation prompt.
 
 The command removes the install path, attempts to remove named environments
-cleanly, cleans PATH entries from common shell profiles, and prints a hint for
-removing the runtime through the package manager or install method that
-provided it.
+cleanly, and prints a hint for removing the runtime through the package manager
+or install method that provided it.
 
 ## `RUNTIME help`
 
@@ -163,6 +165,12 @@ RUNTIME --path /tmp/name install -n myenv pandas
 
 If the install path does not exist, pass-through commands automatically
 bootstrap first.
+
+The delegate process receives a conda-like base environment: `CONDA_ROOT_PREFIX`,
+`CONDA_PREFIX`, `CONDA_DEFAULT_ENV=base`, `CONDA_SHLVL=1`, and a `PATH` with the
+managed prefix's executable directories first. On Unix this includes `bin` and
+`condabin`; on Windows this includes the root prefix, `Library` binary
+directories, `Scripts`, `bin`, and `condabin`.
 
 ## Disabled Shell Commands
 

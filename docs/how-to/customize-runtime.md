@@ -10,9 +10,9 @@ distribution that uses conda-ship to publish `cx` and `cxz`; use a runtime name
 owned by your distribution.
 
 The manifest examples below describe the build input conda-ship consumes.
-Packaged CLI builds find the installed runtime template automatically. Source
-checkouts can omit `--template` while changing conda-ship itself; that
-fallback builds the template locally.
+Packaged CLI builds find the runtime template installed next to `cs`
+automatically. Source checkouts can omit `--template` while changing
+conda-ship itself; that fallback builds the template locally.
 
 ## Choose A Runtime Name
 
@@ -67,7 +67,10 @@ path locally with the global runtime option, for example
 
 Choose a product-specific install name. conda-ship does not reserve names
 under `~/.conda`; it writes runtime metadata into bootstrapped prefixes and
-uses that metadata to avoid overwriting prefixes owned by other tools.
+uses that metadata to avoid overwriting prefixes owned by other tools. The
+metadata includes the runtime display name, install name, metadata filename,
+and metadata schema version, so a runtime refuses to use or remove a prefix
+that belongs to a different stamped runtime.
 
 For a platformdirs-style location, use `install-scheme = "user-data"`. That stores the
 runtime below the platform user data directory, such as

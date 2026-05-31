@@ -130,4 +130,6 @@ delegate, install scheme, install name, runtime lock, metadata, and optional
 embedded bundle. That stamped copy is the runtime. conda-ship then writes the
 staged artifacts to the downstream project's output directory. Source checkouts
 can omit `--template` while changing conda-ship itself; that fallback builds
-`conda-ship-runtime` locally with Cargo.
+`conda-ship-runtime` locally with Cargo. Packaged builds use the runtime
+template installed next to `cs`, unless `--template` points at an explicit
+template asset.

@@ -14,6 +14,22 @@ workflows run after conda-ship writes these files.
 
 On Windows, binary filenames also include `.exe`.
 
+## Bundle Contents
+
+Bundles are a transport for the conda package archives already named in the
+runtime lock. They are not channel mirrors and do not use a `linux-64/` or
+`noarch/` directory layout.
+
+`external` and `embedded` bundles contain top-level `.conda` and `.tar.bz2`
+package archive files. The runtime matches those filenames against the stamped
+lockfile and verifies package SHA256 values before installing from them.
+
+External bundle directories may contain unrelated files, but conda-ship only
+indexes top-level conda package archives and skips symbolic links. Embedded
+bundles are stricter because they are extracted from a tar archive: every entry
+must be a top-level regular `.conda` or `.tar.bz2` file. Directory entries,
+nested paths, symbolic links, hard links, and other file types are rejected.
+
 ## Metadata Files
 
 For an `online` build with runtime `demo`, conda-ship stages:
