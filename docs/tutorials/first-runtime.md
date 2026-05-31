@@ -29,7 +29,7 @@ conda activate cs-demo
 Check that both commands are available:
 
 ```bash
-cs --version
+conda ship --help
 conda workspace --help
 ```
 
@@ -175,7 +175,7 @@ explicit.
 ::::
 
 conda-ship consumes the matching lockfile; it does not solve directly from
-loose package names during normal builds. `cs build` will derive its own
+loose package names during normal builds. The builder will derive its own
 runtime lock from this source lockfile.
 
 ## Inspect The Package Set
@@ -183,9 +183,25 @@ runtime lock from this source lockfile.
 Run a preflight check before building. This derives the runtime package set,
 applies exclusions, and prints the selected packages without writing files:
 
+::::{tab-set}
+
+:::{tab-item} conda-workspaces
+
+```bash
+conda ship inspect
+```
+
+:::
+
+:::{tab-item} Pixi
+
 ```bash
 cs inspect
 ```
+
+:::
+
+::::
 
 The output lists the manifest and lockfile conda-ship selected, each locked
 platform, and the package set for your current platform.
@@ -194,9 +210,25 @@ platform, and the package set for your current platform.
 
 Build an online runtime named `demo`:
 
+::::{tab-set}
+
+:::{tab-item} conda-workspaces
+
+```bash
+conda ship build
+```
+
+:::
+
+:::{tab-item} Pixi
+
 ```bash
 cs build
 ```
+
+:::
+
+::::
 
 The generated runtime is written to `dist/demo` on Unix and `dist/demo.exe` on
 Windows.
@@ -239,9 +271,25 @@ The embedded layout puts compressed package archives inside the generated binary
 This makes the build slower and the binary larger, but bootstrap no longer needs
 to download package archives.
 
+::::{tab-set}
+
+:::{tab-item} conda-workspaces
+
+```bash
+conda ship build --layout embedded
+```
+
+:::
+
+:::{tab-item} Pixi
+
 ```bash
 cs build --layout embedded
 ```
+
+:::
+
+::::
 
 Embedded runtimes use the `z` suffix, so this stages `dist/demoz` on Unix and
 `dist/demoz.exe` on Windows.
