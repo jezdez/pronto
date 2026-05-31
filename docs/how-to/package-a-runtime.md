@@ -1,0 +1,136 @@
+# Package A Runtime
+
+Use this guide after `cs build` has produced runtime artifacts and you want to
+hand those files to another distribution channel.
+
+conda-ship does not generate `.sh`, `.pkg`, `.msi`, Homebrew formulae, Docker
+images, or constructor installers. It produces runtimes and metadata that those
+systems can wrap.
+
+## Start From The Output Directory
+
+Every build writes a directory like `dist/`:
+
+```bash
+cs build --out-dir dist
+```
+
+For release automation, use the GitHub Action `dist-path` output. It contains
+all files produced by the build.
+
+```yaml
+- uses: jezdez/conda-ship@v0.1.0
+  id: cs
+
+- uses: actions/upload-artifact@v4
+  with:
+    name: ${{ steps.cs.outputs.asset-name }}
+    path: ${{ steps.cs.outputs.dist-path }}
+```
+
+## Publish Direct Release Assets
+
+For direct GitHub Releases, upload the full `dist/` contents:
+
+- runtime binary
+- optional `.bundle.tar.zst`
+- `.runtime.lock`
+- `.packages.txt`
+- `.info.json`
+- `.sha256`
+
+The metadata files help users and downstream packagers inspect what was built.
+Do not publish only the runtime binary unless your release channel has another
+place for checksums and package metadata.
+
+## Wrap With Homebrew
+
+For an online runtime, a Homebrew formula usually installs the runtime binary
+and lets the runtime download packages at first bootstrap.
+
+Set an install method so uninstall guidance is useful:
+
+```bash
+cs build --install-method homebrew
+```
+
+The formula should install the runtime onto `PATH`. It should not modify the
+managed prefix directly; the runtime owns bootstrap, status, shell, pass-through,
+and uninstall behavior.
+
+## Wrap With A Conda Package
+
+A conda package can install the runtime binary into the package environment.
+This is useful for distributing the builder itself or a downstream runtime in a
+conda channel.
+
+Keep two boundaries clear:
+
+- the conda package installs the runtime binary
+- the generated runtime bootstraps and owns its managed prefix
+
+Use `install-method` to tell users where the runtime binary came from:
+
+```bash
+cs build --install-method conda-forge
+```
+
+## Wrap With constructor Or Another Installer
+
+Installer generators can include either:
+
+- an online runtime and no package bundle
+- an external runtime plus extracted or adjacent bundle
+- an embedded runtime
+
+For `external`, place the bundle where the installer or first-run script can
+pass it to bootstrap:
+
+```bash
+RUNTIME bootstrap --bundle /path/to/bundle --offline
+```
+
+For `embedded`, no extra bundle path is needed:
+
+```bash
+RUNTIMEz bootstrap
+```
+
+The installer should not unpack the managed conda prefix by itself. Let the
+runtime bootstrap so ownership metadata, `.condarc`, frozen marker, and package
+verification are applied consistently.
+
+## Package For Docker Or Internal Images
+
+For images, decide whether bootstrap happens at image build time or container
+run time.
+
+Build-time bootstrap gives faster startup:
+
+```dockerfile
+COPY demo /usr/local/bin/demo
+RUN demo --path /opt/demo bootstrap
+```
+
+Run-time bootstrap gives a smaller image layer before first use:
+
+```dockerfile
+COPY demo /usr/local/bin/demo
+ENTRYPOINT ["demo"]
+```
+
+Use an explicit `--path` in images. Avoid relying on a user home directory when
+the image will run as different users.
+
+## Verify Before Publishing
+
+Before handing files to another system:
+
+```bash
+shasum -a 256 --check dist/*.sha256
+```
+
+For GitHub Action builds, also keep the release attestation checks enabled in
+the action. They verify the conda-ship tools used to stamp the downstream
+runtime.
+

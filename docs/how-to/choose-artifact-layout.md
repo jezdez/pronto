@@ -1,0 +1,113 @@
+# Choose An Artifact Layout
+
+Use this guide when you need to choose between `online`, `external`, and
+`embedded` builds.
+
+The layout changes how package archives travel with the runtime. It does not
+change the package set. All layouts use the same runtime lock derived from the
+selected source environment.
+
+## Use `online` For Small Release Assets
+
+Choose `online` when users can download conda package archives during
+bootstrap:
+
+```bash
+cs build --layout online
+```
+
+An online runtime contains:
+
+- runtime metadata
+- the stamped runtime lock
+- no package archive bundle
+
+Bootstrap downloads packages from the channels recorded in the lock. This keeps
+the runtime artifact small and is the best default for GitHub Releases,
+Homebrew, and package-manager wrappers that expect network access.
+
+## Use `external` For Split Binary And Bundle Delivery
+
+Choose `external` when you want the runtime and package archives as separate
+files:
+
+```bash
+cs build --layout external
+```
+
+This stages:
+
+- `RUNTIME`
+- `RUNTIME.bundle.tar.zst`
+- metadata files
+
+Use this layout when an installer, archive, or enterprise deployment system can
+place the runtime and bundle side by side. Users bootstrap with:
+
+```bash
+RUNTIME bootstrap --bundle ./bundle-dir --offline
+```
+
+The external bundle is not a conda channel mirror. It is a flat set of `.conda`
+and `.tar.bz2` archives named in the runtime lock.
+
+## Use `embedded` For One Larger Offline Runtime
+
+Choose `embedded` when a single runtime binary must carry the package archives:
+
+```bash
+cs build --layout embedded
+```
+
+Embedded runtimes use the `z` suffix:
+
+```text
+demo   -> online or external runtime
+demoz  -> embedded runtime
+```
+
+Bootstrap detects the embedded bundle automatically:
+
+```bash
+demoz bootstrap
+```
+
+This is useful when the runtime must install without network access and you do
+not want a separate bundle file. The tradeoff is a larger binary and slower
+builds.
+
+## Decision Table
+
+| Need | Layout |
+| --- | --- |
+| Smallest runtime artifact | `online` |
+| Network access during bootstrap is acceptable | `online` |
+| Runtime and packages should be distributed separately | `external` |
+| Installer can unpack a bundle next to the runtime | `external` |
+| One file should bootstrap offline | `embedded` |
+| Release channel has strict single-binary ergonomics | `embedded` |
+
+## Keep The Layout Out Of The Solve
+
+Do not create separate source environments only to change layout. Keep package
+and channel intent in the source manifest, commit the lockfile, and override
+layout at build time when needed:
+
+```bash
+cs build --layout online
+cs build --layout embedded
+```
+
+In GitHub Actions, matrix the layout:
+
+```yaml
+strategy:
+  matrix:
+    layout: [online, embedded]
+
+steps:
+  - uses: jezdez/conda-ship@v0.1.0
+    with:
+      layout: ${{ matrix.layout }}
+```
+

@@ -86,6 +86,8 @@ See a concrete downstream distribution built with conda-ship.
 :maxdepth: 1
 
 tutorials/first-runtime
+tutorials/github-action-runtime
+tutorials/custom-delegate-runtime
 ```
 
 ```{toctree}
@@ -94,9 +96,13 @@ tutorials/first-runtime
 :maxdepth: 1
 
 how-to/build-locally
+how-to/choose-artifact-layout
 how-to/customize-runtime
 how-to/build-in-github-actions
 how-to/build-offline-artifacts
+how-to/package-a-runtime
+how-to/verify-release-artifacts
+how-to/troubleshoot-builds
 ```
 
 ```{toctree}
@@ -110,6 +116,10 @@ reference/runtime-cli
 reference/github-action
 reference/configuration
 reference/artifacts
+reference/environment-variables
+reference/runtime-data-format
+reference/release-assets
+reference/errors
 ```
 
 ```{toctree}
@@ -118,7 +128,11 @@ reference/artifacts
 :maxdepth: 1
 
 explanation/concepts
+explanation/source-locks-and-runtime-locks
 explanation/runtime-template
+explanation/install-locations-and-ownership
+explanation/artifact-layout-tradeoffs
+explanation/trust-and-provenance
 explanation/project-boundaries
 explanation/manifests-and-conda-plugin
 ```

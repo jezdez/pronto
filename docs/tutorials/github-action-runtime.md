@@ -1,0 +1,148 @@
+# Build A Runtime In GitHub Actions
+
+This tutorial takes a committed conda-ship project and builds runtime artifacts
+with the composite GitHub Action.
+
+You will add a workflow that downloads released conda-ship build tools, verifies
+them, runs `cs build --dry-run`, builds the runtime, and uploads the generated
+`dist` directory as a workflow artifact.
+
+## Before You Start
+
+You need a repository that already contains one supported manifest and lockfile
+pair:
+
+- `conda.toml` and `conda.lock`
+- `pixi.toml` and `pixi.lock`
+- `pyproject.toml` with `[tool.conda]` and `conda.lock`
+- `pyproject.toml` with `[tool.pixi]` and `pixi.lock`
+
+The manifest must contain `[tool.conda-ship]` with at least:
+
+```toml
+[tool.conda-ship]
+runtime = "demo"
+delegate = "conda"
+source-environment = "ship"
+```
+
+Run the local preflight before committing:
+
+```bash
+cs inspect
+cs build --dry-run
+```
+
+## Add The Workflow
+
+Create `.github/workflows/build-runtime.yml`:
+
+```yaml
+name: Build runtime
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  attestations: read
+  id-token: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }} ${{ matrix.layout }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            layout: online
+            install-method: standalone
+          - os: macos-latest
+            layout: embedded
+            install-method: homebrew
+          - os: windows-latest
+            layout: online
+            install-method: standalone
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: jezdez/conda-ship@v0.1.0
+        id: cs
+        with:
+          layout: ${{ matrix.layout }}
+          install-method: ${{ matrix.install-method }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.cs.outputs.asset-name }}
+          path: ${{ steps.cs.outputs.dist-path }}
+```
+
+Pin the action to a conda-ship release tag. Branch refs do not have matching
+release assets for `cs` and `cs-template`.
+
+## Run It
+
+Push the workflow and start it from the GitHub Actions tab, or wait for the next
+push to `main`.
+
+The action downloads these release assets for the current runner:
+
+- `cs-<target>`
+- `cs-template-<target>`
+- `SHA256SUMS`
+
+It verifies GitHub artifact attestations and the checksums before running the
+downloaded `cs` binary.
+
+## Inspect The Artifact
+
+Each job uploads the full generated output directory. Download one artifact and
+inspect the files:
+
+```text
+demo-x86_64-unknown-linux-gnu
+demo-x86_64-unknown-linux-gnu.info.json
+demo-x86_64-unknown-linux-gnu.packages.txt
+demo-x86_64-unknown-linux-gnu.runtime.lock
+demo-x86_64-unknown-linux-gnu.sha256
+```
+
+For an `external` build, the directory also contains
+`demo-<target>.bundle.tar.zst`. For an `embedded` build, the runtime name gets
+the `z` suffix, for example `demoz-aarch64-apple-darwin`.
+
+## Override Runtime Metadata
+
+Keep package and channel choices in the manifest and lockfile. Use action inputs
+for release-job metadata that may vary across a matrix:
+
+```yaml
+- uses: jezdez/conda-ship@v0.1.0
+  id: cs
+  with:
+    runtime: demo
+    delegate: conda
+    layout: ${{ matrix.layout }}
+    docs-url: https://example.com/demo/
+    install-scheme: conda-home
+    install-name: demo
+    install-method: ${{ matrix.install-method }}
+```
+
+The action does not validate those values itself. It passes them to
+`cs build --dry-run`; invalid values fail in conda-ship before artifact files
+are written.
+
+## What You Learned
+
+You added a release-style workflow that builds conda-ship runtime artifacts from
+committed project input. The solve still belongs to conda-workspaces or Pixi;
+the action consumes the committed lockfile and stamps a runtime with
+release-specific metadata.
+
